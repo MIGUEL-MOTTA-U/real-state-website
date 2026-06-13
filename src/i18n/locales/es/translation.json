@@ -1,0 +1,155 @@
+{
+  "common": {
+    "panel": "Panel",
+    "dashboard": "Panel de Agente"
+  },
+  "public": {
+    "nav": {
+      "inicio": "Inicio",
+      "nosotros": "Nosotros",
+      "propiedades": "Propiedades",
+      "servicios": "Servicios",
+      "contacto": "Contacto"
+    },
+    "hero": {
+      "premium": "Century 21 Colombia — Agente Premium",
+      "subtitle": "Consultora Inmobiliaria de Lujo",
+      "description": "Más de 12 años conectando familias colombianas con propiedades excepcionales. Experiencia, discreción y resultados comprobados.",
+      "whatsapp": "WhatsApp",
+      "call": "Llamar",
+      "contact": "Contactar",
+      "explore": "Explorar"
+    },
+    "stats": {
+      "sold": "Propiedades vendidas",
+      "experience": "Años de experiencia",
+      "satisfied": "Clientes satisfechos",
+      "topAgent": "Agente Century 21 COL #1"
+    },
+    "about": {
+      "title": "Sobre mí",
+      "heroTitle": "Experiencia que transforma propiedades en hogares",
+      "desc1": "Soy Aura Urrea, consultora inmobiliaria certificada con más de 12 años de trayectoria en el mercado colombiano. Mi especialidad son las propiedades de alto valor en Bogotá, Medellín y la Costa Caribe.",
+      "desc2": "Como parte de Century 21, la red inmobiliaria más grande del mundo, tengo acceso a recursos exclusivos, herramientas de valoración avanzadas y una red de compradores nacionales e internacionales.",
+      "gold": "Agente Century 21 Gold",
+      "certified": "Certificada CIJ Colombia",
+      "luxury": "Especialista en lujo",
+      "legal": "Asesoría jurídica integral",
+      "write": "Escribir"
+    },
+    "listings": {
+      "title": "Propiedades destacadas",
+      "heroTitle": "Inmuebles de Alto Valor",
+      "all": "Ver todas las propiedades",
+      "beds": "hab.",
+      "baths": "baños",
+      "more": "Ver más →",
+      "title_1": "Apartamento de Lujo en El Poblado",
+      "loc_1": "El Poblado, Medellín",
+      "title_2": "Casa Campestre en La Calera",
+      "loc_2": "La Calera, Cundinamarca",
+      "title_3": "Penthouse Frente al Mar",
+      "loc_3": "Bocagrande, Cartagena",
+      "status": {
+        "featured": "Destacado",
+        "sale": "Venta",
+        "rent": "Arriendo"
+      }
+    },
+    "services": {
+      "title": "Servicios",
+      "heroTitle": "Un servicio completo, a su medida",
+      "buySell": "Compra y Venta",
+      "buySellDesc": "Acompañamiento integral en cada etapa del proceso de compraventa, desde la búsqueda hasta la escrituración.",
+      "rent": "Arrendamiento",
+      "rentDesc": "Gestión profesional de arriendos residenciales y comerciales con contratos seguros y respaldo legal.",
+      "valuation": "Avalúos y Valoración",
+      "valuationDesc": "Análisis de mercado y avalúos técnicos certificados para conocer el valor real de su propiedad.",
+      "legalAdvice": "Asesoría Jurídica",
+      "legalAdviceDesc": "Revisión de documentos, estudio de títulos y acompañamiento notarial con expertos en derecho inmobiliario."
+    },
+    "contact": {
+      "title": "Contacto",
+      "heroTitle": "Hablemos sobre su propiedad",
+      "desc": "Ya sea que desee comprar, vender o arrendar, estoy disponible para acompañarle en cada paso del proceso. Respondo en menos de 2 horas.",
+      "phone": "Teléfono",
+      "whatsapp": "WhatsApp",
+      "email": "Correo",
+      "office": "Oficina",
+      "formTitle": "Mensaje enviado",
+      "formSubtitle": "Le contactaré a la mayor brevedad posible.",
+      "labelName": "Nombre completo *",
+      "labelPhone": "Teléfono / WhatsApp *",
+      "labelMessage": "Mensaje *",
+      "btnSend": "Enviar mensaje"
+    },
+    "footer": {
+      "nav": "Navegación",
+      "contact": "Contacto",
+      "rights": "© 2025 Aura Urrea · Century 21 Colombia. Todos los derechos reservados.",
+      "license": "Matrícula profesional LONJA DE PROPIEDAD RAÍZ Nº 12.847"
+    }
+  },
+  "login": {
+    "back": "Volver al sitio",
+    "private": "Acceso privado",
+    "welcome": "Bienvenida, Aura",
+    "subtitle": "Ingresa tus credenciales para acceder al panel.",
+    "panelTitle": "Panel de gestión inmobiliaria",
+    "panelDesc": "Administra tus propiedades, actualiza listados y gestiona clientes desde un solo lugar. Acceso exclusivo para el equipo Century 21.",
+    "stats": {
+      "active": "Propiedades activas",
+      "negotiation": "En negociación",
+      "closings": "Cierres este mes",
+      "satisfaction": "Satisfacción"
+    },
+    "form": {
+      "email": "Correo electrónico",
+      "password": "Contraseña",
+      "forgot": "¿Olvidaste tu contraseña?",
+      "submit": "Ingresar al panel",
+      "verifying": "Verificando...",
+      "errorFields": "Por favor complete todos los campos.",
+      "continueWith": "o continuar con"
+    },
+    "social": {
+      "aws": "AWS Cognito",
+      "entraid": "Entra ID"
+    },
+    "footer": {
+      "restricted": "Acceso restringido al equipo Century 21 Colombia.",
+      "support": "Soporte técnico"
+    }
+  },
+  "dashboard": {
+    "greeting": "Buenos días, Aura",
+    "summary": "Aquí tienes un resumen de tus propiedades y actividad reciente.",
+    "kpis": {
+      "total": "Total propiedades",
+      "published": "Publicadas",
+      "drafts": "Borradores",
+      "featured": "Destacadas"
+    },
+    "kpiDelta": {
+      "thisMonth": "{{count}} este mes",
+      "thisWeek": "{{count}} esta semana",
+      "pending": "{{count}} pendientes revisión"
+    },
+    "recentListings": "Propiedades recientes",
+    "viewAll": "Ver todas",
+    "status": {
+      "published": "Publicado",
+      "featured": "Destacado",
+      "draft": "Borrador",
+      "archived": "Archivado"
+    },
+    "activity": "Actividad reciente",
+    "quickStats": {
+      "visits": "Visitas esta semana",
+      "queries": "Consultas recibidas",
+      "negotiation": "Propiedades en negociación",
+      "projected": "Cierres proyectados"
+    },
+    "date": "Viernes, 13 de junio de 2025"
+  }
+}

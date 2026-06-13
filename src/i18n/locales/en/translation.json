@@ -1,0 +1,155 @@
+{
+  "common": {
+    "panel": "Panel",
+    "dashboard": "Agent Panel"
+  },
+  "public": {
+    "nav": {
+      "inicio": "Home",
+      "nosotros": "About Us",
+      "propiedades": "Properties",
+      "servicios": "Services",
+      "contacto": "Contact"
+    },
+    "hero": {
+      "premium": "Century 21 Colombia — Premium Agent",
+      "subtitle": "Luxury Real Estate Consultant",
+      "description": "Over 12 years connecting Colombian families with exceptional properties. Experience, discretion, and proven results.",
+      "whatsapp": "WhatsApp",
+      "call": "Call",
+      "contact": "Contact",
+      "explore": "Explore"
+    },
+    "stats": {
+      "sold": "Properties sold",
+      "experience": "Years of experience",
+      "satisfied": "Satisfied clients",
+      "topAgent": "Century 21 COL Agent #1"
+    },
+    "about": {
+      "title": "About Me",
+      "heroTitle": "Experience that transforms properties into homes",
+      "desc1": "I am Aura Urrea, a certified real estate consultant with over 12 years of experience in the Colombian market. I specialize in high-value properties in Bogotá, Medellín, and the Caribbean Coast.",
+      "desc2": "As part of Century 21, the largest real estate network in the world, I have access to exclusive resources, advanced valuation tools, and a network of national and international buyers.",
+      "gold": "Century 21 Gold Agent",
+      "certified": "Certified CIJ Colombia",
+      "luxury": "Luxury Specialist",
+      "legal": "Comprehensive legal advice",
+      "write": "Message"
+    },
+    "listings": {
+      "title": "Featured Properties",
+      "heroTitle": "High-Value Real Estate",
+      "all": "View all properties",
+      "beds": "beds",
+      "baths": "baths",
+      "more": "View more →",
+      "title_1": "Luxury Apartment in El Poblado",
+      "loc_1": "El Poblado, Medellín",
+      "title_2": "Country House in La Calera",
+      "loc_2": "La Calera, Cundinamarca",
+      "title_3": "Oceanfront Penthouse",
+      "loc_3": "Bocagrande, Cartagena",
+      "status": {
+        "featured": "Featured",
+        "sale": "For Sale",
+        "rent": "For Rent"
+      }
+    },
+    "services": {
+      "title": "Services",
+      "heroTitle": "A complete service, tailored to you",
+      "buySell": "Buy and Sell",
+      "buySellDesc": "Comprehensive support in every stage of the buying and selling process, from searching to deed execution.",
+      "rent": "Rentals",
+      "rentDesc": "Professional management of residential and commercial rentals with secure contracts and legal backing.",
+      "valuation": "Appraisals and Valuation",
+      "valuationDesc": "Market analysis and certified technical appraisals to know the real value of your property.",
+      "legalAdvice": "Legal Advice",
+      "legalAdviceDesc": "Document review, title search, and notary support with experts in real estate law."
+    },
+    "contact": {
+      "title": "Contact",
+      "heroTitle": "Let's talk about your property",
+      "desc": "Whether you want to buy, sell or rent, I am available to accompany you in every step of the process. I respond in less than 2 hours.",
+      "phone": "Phone",
+      "whatsapp": la "WhatsApp",
+      "email": "Email",
+      "office": "Office",
+      "formTitle": "Message sent",
+      "formSubtitle": "I will contact you as soon as possible.",
+      "labelName": "Full Name *",
+      "labelPhone": "Phone / WhatsApp *",
+      "labelMessage": "Message *",
+      "btnSend": "Send message"
+    },
+    "footer": {
+      "nav": "Navigation",
+      "contact": "Contact",
+      "rights": "© 2025 Aura Urrea · Century 21 Colombia. All rights reserved.",
+      "license": "Professional License LONJA DE PROPIEDAD RAÍZ Nº 12.847"
+    }
+  },
+  "login": {
+    "back": "Back to site",
+    "private": "Private Access",
+    "welcome": "Welcome, Aura",
+    "subtitle": "Enter your credentials to access the panel.",
+    "panelTitle": "Real Estate Management Panel",
+    "panelDesc": "Manage your properties, update listings and manage clients from one place. Exclusive access for the Century 21 team.",
+    "stats": {
+      "active": "Active properties",
+      "negotiation": "In negotiation",
+      "closings": "Closings this month",
+      "satisfaction": "Satisfaction"
+    },
+    "form": {
+      "email": "Email address",
+      "password": "Password",
+      "forgot": "Forgot your password?",
+      "submit": "Enter panel",
+      "verifying": "Verifying...",
+      "errorFields": "Please complete all fields.",
+      "continueWith": "or continue with"
+    },
+    "social": {
+      "aws": "AWS Cognito",
+      "entraid": "Entra ID"
+    },
+    "footer": {
+      "restricted": "Restricted access to the Century 21 Colombia team.",
+      "support": "Technical Support"
+    }
+  },
+  "dashboard": {
+    "greeting": "Good morning, Aura",
+    "summary": "Here is a summary of your properties and recent activity.",
+    "kpis": {
+      "total": "Total properties",
+      "published": "Published",
+      "drafts": "Drafts",
+      "featured": "Featured"
+    },
+    "kpiDelta": {
+      "thisMonth": "{{count}} this month",
+      "thisWeek": "{{count}} this week",
+      "pending": "{{count}} pending review"
+    },
+    "recentListings": "Recent properties",
+    "viewAll": "View all",
+    "status": {
+      "published": "Published",
+      "featured": "Featured",
+      "draft": "Draft",
+      "archived": "Archived"
+    },
+    "activity": "Recent activity",
+    "quickStats": {
+      "visits": "Visits this week",
+      "queries": "Queries received",
+      "negotiation": "Properties in negotiation",
+      "projected": "Projected closings"
+    },
+    "date": "Friday, June 13, 2025"
+  }
+}
