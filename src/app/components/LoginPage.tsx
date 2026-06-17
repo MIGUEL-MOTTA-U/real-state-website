@@ -54,7 +54,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
               </p>
               <p className="text-[#C9A84C] text-xs">Century 21 Colombia</p>
             </div>
-          </div
+          </div>
 
           <div>
             <h2
