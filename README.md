@@ -3,14 +3,14 @@
 ## Descripción
 Premium Real Estate Platform es una aplicación web de nivel profesional diseñada para la gestión y promoción de bienes raíces de lujo. La plataforma ofrece una solución integral que combina un sitio web público de alto impacto visual con un panel administrativo robusto para la gestión de inventario inmobiliario.
 
-El proyecto está diseñado para proporcionar una experiencia de usuario fluida y receptiva, permitiendo a los agentes inmobiliarios gestionar sus propiedades, visualizar métricas de estado y mantener una presencia digital premium con soporte multiidioma.
+El proyecto está diseñado para proporcionar una experiencia de usuario fluida y receptiva, permitiendo a los agentes inmobiliarios gestionar sus propiedades, visualizar métricas de estado y mantener una presencia digital premium en español.
 
 ---
 
 ## Características
 - **Sitio Público Premium**: Interfaz moderna con secciones de inicio (video hero), nosotros, catálogo de propiedades, servicios y contacto.
 - **Panel de Administración (Dashboard)**: Sistema centralizado para la gestión de propiedades, incluyendo visualización en tabla y formularios de creación/edición.
-- **Soporte Multiidioma**: Implementación completa de internacionalización (i18n) con soporte para Español e Inglés y detección automática de idioma.
+- **Idioma consistente**: La interfaz carga español por defecto y mantiene un único idioma visible en toda la experiencia.
 - **Gestión de Propiedades**: Seguimiento de estados de listados (Publicadas, Borradores, Archivadas) y detalles técnicos (área, habitaciones, baños, ubicación).
 - **Sistema de Contacto Integrado**: Formularios de contacto con integración directa para WhatsApp, llamadas telefónicas y correo electrónico.
 - **Diseño Responsivo**: Interfaz optimizada para dispositivos móviles y de escritorio utilizando Tailwind CSS y componentes de Radix UI.
@@ -21,7 +21,7 @@ El proyecto está diseñado para proporcionar una experiencia de usuario fluida 
 La aplicación sigue una arquitectura de **Single Page Application (SPA)** construida con React.
 
 - **Routing Interno**: Utiliza un sistema de gestión de estado para la navegación entre las vistas principales (`Public`, `Login`, `Dashboard`).
-- **Localización**: Integración con `i18next` para la gestión dinámica de traducciones mediante archivos JSON locales.
+- **Localización**: Integración con `i18next` y archivos JSON locales. La configuración actual fija español como idioma de la aplicación para evitar mezclas de idioma en la interfaz.
 - **Componentización**: Arquitectura basada en componentes modulares, diferenciando componentes de interfaz de usuario (UI) base de componentes de lógica de negocio.
 - **Procesamiento de Activos**: Utiliza un plugin personalizado de Vite (`figma-asset-resolver`) para la resolución eficiente de recursos gráficos.
 

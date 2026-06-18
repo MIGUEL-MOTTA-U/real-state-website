@@ -307,7 +307,7 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
             >
               <div className="flex items-center gap-2">
                 <Award size={16} className="text-[#C9A84C]" />
-                <span className="text-white/90 text-sm">Top Producer 2022 · 2023 · 2024</span>
+                <span className="text-white/90 text-sm">Agente destacada 2022 · 2023 · 2024</span>
               </div>
             </div>
           </div>

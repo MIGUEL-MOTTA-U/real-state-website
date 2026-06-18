@@ -11,7 +11,7 @@ const TABS: { id: Tab; label: string; num: number }[] = [
   { id: "general", label: "General", num: 1 },
   { id: "location", label: "Ubicación", num: 2 },
   { id: "pricing", label: "Precios", num: 3 },
-  { id: "areas", label: "Áreas y Layout", num: 4 },
+  { id: "areas", label: "Áreas y distribución", num: 4 },
   { id: "features", label: "Estructura y Características", num: 5 },
   { id: "media", label: "Medios y Comercial", num: 6 },
 ];
@@ -177,7 +177,7 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           <Input value={title} onChange={setTitle} placeholder="Ej. Apartamento de Lujo en El Poblado" />
         </Field>
         <Field label="Idioma">
-          <Select options={["Español", "English"]} value="Español" />
+          <Select options={["Español"]} value="Español" />
         </Field>
         <Field label="Tipo de propiedad" required>
           <Select
@@ -411,7 +411,7 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
 
         <div>
           <p className="text-[#0B1F3A] text-xs font-semibold uppercase tracking-wide mb-3">
-            Zonas comunes / amenities
+            Zonas comunes / amenidades
           </p>
           <ChipGroup
             options={AMENITIES}
@@ -549,7 +549,7 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           <div className="relative h-72 overflow-hidden">
             <img
               src="https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&h=500&fit=crop&auto=format"
-              alt="Preview"
+              alt="Vista previa"
               className="w-full h-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[#0B1F3A]/80 to-transparent" />
