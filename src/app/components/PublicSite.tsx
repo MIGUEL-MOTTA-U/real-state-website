@@ -10,6 +10,28 @@ interface PublicSiteProps {
   onNavigateToDashboard: () => void;
 }
 
+  /* LISTINGS moved inside component */
+
+  /* SERVICES moved inside component */
+
+function StatusBadge({ label }: { label: string }) {
+  const styles: Record<string, string> = {
+    Destacado: "bg-[#C9A84C] text-[#0B1F3A]",
+    Venta: "bg-[#0B1F3A] text-[#F8F7F4]",
+    Arriendo: "bg-[#1F2937] text-[#F8F7F4]",
+  };
+  return (
+    <span
+      className={`inline-block px-2 py-0.5 text-xs font-semibold tracking-wide uppercase rounded-sm ${styles[label] ?? "bg-gray-200 text-gray-800"}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
+  const { t } = useTranslation();
+
   const LISTINGS = [
     {
       id: 1,
@@ -68,24 +90,6 @@ interface PublicSiteProps {
       desc: t('public.services.legalAdviceDesc'),
     },
   ];
-
-function StatusBadge({ label }: { label: string }) {
-  const styles: Record<string, string> = {
-    Destacado: "bg-[#C9A84C] text-[#0B1F3A]",
-    Venta: "bg-[#0B1F3A] text-[#F8F7F4]",
-    Arriendo: "bg-[#1F2937] text-[#F8F7F4]",
-  };
-  return (
-    <span
-      className={`inline-block px-2 py-0.5 text-xs font-semibold tracking-wide uppercase rounded-sm ${styles[label] ?? "bg-gray-200 text-gray-800"}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
-  const { t } = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [formData, setFormData] = useState({ name: "", phone: "", message: "" });
