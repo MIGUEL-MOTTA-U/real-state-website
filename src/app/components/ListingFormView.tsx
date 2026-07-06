@@ -1,9 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertCircle, CheckCircle2, Upload, X, MapPin,
-  Image, Video, Layout, Camera, ArrowLeft, Eye,
-  ChevronRight, Info
+  Video, Layout, Camera, ArrowLeft, Eye,
+  ChevronRight, Info, Loader2, AlertTriangle, Star
 } from "lucide-react";
+import { listingsApi, uploadsApi, ApiError } from "../services/api";
+import type { ApiAsset, ApiListing } from "../services/types";
+import { emptyListing } from "../services/types";
+import {
+  PROPERTY_TYPE_LABELS,
+  OPERATION_TYPE_LABELS,
+  PUBLICATION_STATUS_LABELS,
+  labelFor,
+} from "../services/mappers";
 
 type Tab = "general" | "location" | "pricing" | "areas" | "features" | "media";
 
@@ -69,9 +78,17 @@ function Input({ placeholder, value, onChange, type = "text", className = "" }: 
   );
 }
 
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
 function Select({ options, value, onChange, placeholder }: {
-  options: string[]; value?: string; onChange?: (v: string) => void; placeholder?: string;
+  options: (string | SelectOption)[]; value?: string; onChange?: (v: string) => void; placeholder?: string;
 }) {
+  const normalized: SelectOption[] = options.map((o) =>
+    typeof o === "string" ? { value: o, label: o } : o,
+  );
   return (
     <select
       value={value}
@@ -79,7 +96,7 @@ function Select({ options, value, onChange, placeholder }: {
       className="w-full border border-[#E8E4DB] bg-white text-[#1F2937] text-sm px-3 py-2.5 focus:outline-none focus:border-[#0B1F3A] transition-colors"
     >
       {placeholder && <option value="">{placeholder}</option>}
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      {normalized.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   );
 }
@@ -108,202 +125,292 @@ function ChipGroup({ options, selected, onToggle }: {
   );
 }
 
-const MOCK_PHOTOS = [
-  "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=200&h=150&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=200&h=150&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=200&h=150&fit=crop&auto=format",
-];
+const dictOptions = (dict: Record<string, string>): SelectOption[] =>
+  Object.entries(dict).map(([value, label]) => ({ value, label }));
+
+const numeric = (v: string): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const numStr = (n: number): string => (n === 0 ? "" : String(n));
 
 interface ListingFormViewProps {
+  listing: ApiListing | null;
   onBack: () => void;
+  onSaved: (saved: ApiListing) => void;
 }
 
-export function ListingFormView({ onBack }: ListingFormViewProps) {
+export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewProps) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const [previewMode, setPreviewMode] = useState(false);
+  const [form, setForm] = useState<ApiListing>(() => listing ?? emptyListing());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  // Media state
+  const [assets, setAssets] = useState<ApiAsset[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Form state
-  const [title, setTitle] = useState("Apartamento de Lujo El Poblado");
-  const [slug, setSlug] = useState("apartamento-lujo-el-poblado");
-  const [propertyType, setPropertyType] = useState("Apartamento");
-  const [subtype, setSubtype] = useState("");
-  const [operationType, setOperationType] = useState("Venta");
-  const [pubStatus, setPubStatus] = useState("Borrador");
-  const [country, setCountry] = useState("Colombia");
-  const [state, setState] = useState("Antioquia");
-  const [city, setCity] = useState("Medellín");
-  const [neighborhood, setNeighborhood] = useState("El Poblado");
-  const [address, setAddress] = useState("Calle 8 Sur # 43A-75");
-  const [stratum, setStratum] = useState("6");
-  const [salePrice, setSalePrice] = useState("850000000");
-  const [currency, setCurrency] = useState("COP");
-  const [adminFee, setAdminFee] = useState("450000");
-  const [builtArea, setBuiltArea] = useState("180");
-  const [landArea, setLandArea] = useState("200");
-  const [bedrooms, setBedrooms] = useState("3");
-  const [bathrooms, setBathrooms] = useState("3");
-  const [parking, setParking] = useState("2");
-  const [yearBuilt, setYearBuilt] = useState("2019");
-  const [constructionQuality, setConstructionQuality] = useState("Alta");
-  const [indoorFeatures, setIndoorFeatures] = useState<string[]>(["Cocina integral", "Balcón", "Vestier"]);
-  const [outdoorFeatures, setOutdoorFeatures] = useState<string[]>(["Vista a montaña"]);
-  const [amenities, setAmenities] = useState<string[]>(["Gimnasio", "Vigilancia 24h", "Ascensor"]);
-  const [agentName, setAgentName] = useState("Aura Urrea");
-  const [agentPhone, setAgentPhone] = useState("+57 300 123 4567");
-  const [agentEmail, setAgentEmail] = useState("aura.urrea@century21.com.co");
+  const isEdit = form.listing_id !== "";
 
-  const toggle = (list: string[], setList: (v: string[]) => void) => (val: string) => {
-    setList(list.includes(val) ? list.filter((x) => x !== val) : [...list, val]);
+  const patch = (partial: Partial<ApiListing>) => setForm((f) => ({ ...f, ...partial }));
+  const patchLocation = (partial: Partial<ApiListing["location"]>) =>
+    setForm((f) => ({ ...f, location: { ...f.location, ...partial } }));
+  const patchPricing = (partial: Partial<ApiListing["pricing"]>) =>
+    setForm((f) => ({ ...f, pricing: { ...f.pricing, ...partial } }));
+  const patchAreas = (partial: Partial<ApiListing["areas"]>) =>
+    setForm((f) => ({ ...f, areas: { ...f.areas, ...partial } }));
+  const patchLayout = (partial: Partial<ApiListing["layout"]>) =>
+    setForm((f) => ({ ...f, layout: { ...f.layout, ...partial } }));
+  const patchStructure = (partial: Partial<ApiListing["structure"]>) =>
+    setForm((f) => ({ ...f, structure: { ...f.structure, ...partial } }));
+  const patchFeatures = (partial: Partial<ApiListing["features"]>) =>
+    setForm((f) => ({ ...f, features: { ...f.features, ...partial } }));
+  const patchMedia = (partial: Partial<ApiListing["media"]>) =>
+    setForm((f) => ({ ...f, media: { ...f.media, ...partial } }));
+  const patchCommercial = (partial: Partial<ApiListing["commercial"]>) =>
+    setForm((f) => ({ ...f, commercial: { ...f.commercial, ...partial } }));
+
+  const toggleFeature = (group: "indoor" | "outdoor" | "commercial") => (val: string) => {
+    const list = form.features[group];
+    patchFeatures({
+      [group]: list.includes(val) ? list.filter((x) => x !== val) : [...list, val],
+    });
   };
 
   // Validation: required fields
-  const isValid = title.trim() && propertyType && operationType && city && salePrice;
+  const hasPrice = form.pricing.sale_price > 0 || form.pricing.rent_price > 0;
+  const isValid = Boolean(
+    form.title.trim() && form.property_type && form.operation_type && form.location.city && hasPrice,
+  );
+
+  // ── Media loading ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isEdit) return;
+    let cancelled = false;
+    listingsApi
+      .listMedia(form.listing_id)
+      .then((data) => {
+        if (!cancelled) setAssets(data ?? []);
+      })
+      .catch(() => {
+        /* media es opcional: no bloquea el formulario */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.listing_id]);
+
+  const syncPhotos = async (updatedAssets: ApiAsset[]) => {
+    // Mantiene listing.media.photos (lo que consume el sitio público)
+    // alineado con los assets reales de R2.
+    const photos = updatedAssets.map((a) => a.url).filter((u): u is string => Boolean(u));
+    const next = {
+      ...form,
+      media: { ...form.media, photos, photo_count: photos.length },
+    };
+    setForm(next);
+    if (next.listing_id) {
+      const saved = await listingsApi.update(next.listing_id, next);
+      setForm(saved);
+      onSaved(saved);
+    }
+  };
+
+  const handleUpload = async (files: FileList | File[]) => {
+    if (!isEdit || uploading) return;
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    setUploading(true);
+    setError(null);
+    try {
+      await uploadsApi.upload("listing_photo", form.listing_id, list);
+      const updated = await listingsApi.listMedia(form.listing_id);
+      setAssets(updated ?? []);
+      await syncPhotos(updated ?? []);
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.message} (${err.code})` : "No se pudieron subir los archivos");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteAsset = async (asset: ApiAsset) => {
+    setUploading(true);
+    setError(null);
+    try {
+      await uploadsApi.remove(asset.id);
+      const updated = assets.filter((a) => a.id !== asset.id);
+      setAssets(updated);
+      await syncPhotos(updated);
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.message} (${err.code})` : "No se pudo eliminar la foto");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Save ───────────────────────────────────────────────────────────────────
+  const save = async (status: string) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const slug =
+        form.slug.trim() ||
+        form.title.trim().toLowerCase().replace(/[^a-z0-9áéíóúñü]+/gi, "-").replace(/^-|-$/g, "");
+      const payload: ApiListing = { ...form, slug, publication_status: status, language: form.language || "es" };
+      const saved = isEdit
+        ? await listingsApi.update(form.listing_id, payload)
+        : await listingsApi.create(payload);
+      setForm(saved);
+      onSaved(saved);
+      setSavedAt(new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.message} (${err.code})` : "No se pudo guardar la propiedad");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const tabContent: Record<Tab, React.ReactNode> = {
     general: (
       <div className="grid md:grid-cols-2 gap-5">
-        <Field label="ID de propiedad" hint="Generado automáticamente">
-          <Input value="INM-009" className="bg-[#F8F7F4] text-[#6B7280] cursor-not-allowed" />
+        <Field label="ID de propiedad" hint="Generado automáticamente al guardar">
+          <Input value={form.listing_id || "(se genera al guardar)"} className="bg-[#F8F7F4] text-[#6B7280] cursor-not-allowed" />
         </Field>
         <Field label="Slug / URL">
           <Input
-            value={slug}
-            onChange={(v) => setSlug(v.toLowerCase().replace(/\s+/g, "-"))}
+            value={form.slug}
+            onChange={(v) => patch({ slug: v.toLowerCase().replace(/\s+/g, "-") })}
             placeholder="apartamento-lujo-el-poblado"
           />
         </Field>
-        <Field label="Título del anuncio" required error={!title ? "Este campo es requerido" : ""}>
-          <Input value={title} onChange={setTitle} placeholder="Ej. Apartamento de Lujo en El Poblado" />
+        <Field label="Título del anuncio" required error={!form.title ? "Este campo es requerido" : ""}>
+          <Input value={form.title} onChange={(v) => patch({ title: v })} placeholder="Ej. Apartamento de Lujo en El Poblado" />
         </Field>
         <Field label="Idioma">
-          <Select options={["Español"]} value="Español" />
+          <Select
+            options={[{ value: "es", label: "Español" }, { value: "en", label: "English" }]}
+            value={form.language || "es"}
+            onChange={(v) => patch({ language: v })}
+          />
         </Field>
         <Field label="Tipo de propiedad" required>
           <Select
-            options={["Apartamento", "Casa", "Penthouse", "Finca", "Local", "Oficina", "Lote", "Bodega"]}
-            value={propertyType}
-            onChange={setPropertyType}
+            options={dictOptions(PROPERTY_TYPE_LABELS)}
+            value={form.property_type}
+            onChange={(v) => patch({ property_type: v })}
+            placeholder="Seleccionar..."
           />
         </Field>
         <Field label="Subtipo">
           <Select
-            options={["", "Dúplex", "Estudio", "Loft", "Villa", "Townhouse"]}
-            value={subtype}
-            onChange={setSubtype}
+            options={["Dúplex", "Estudio", "Loft", "Villa", "Townhouse"]}
+            value={form.subtype}
+            onChange={(v) => patch({ subtype: v })}
             placeholder="Seleccionar..."
           />
         </Field>
         <Field label="Tipo de operación" required>
           <Select
-            options={["Venta", "Arriendo", "Venta y Arriendo", "Permuta"]}
-            value={operationType}
-            onChange={setOperationType}
+            options={dictOptions(OPERATION_TYPE_LABELS)}
+            value={form.operation_type}
+            onChange={(v) => patch({ operation_type: v })}
+            placeholder="Seleccionar..."
           />
         </Field>
         <Field label="Estado de publicación">
           <Select
-            options={["Borrador", "Publicado", "Archivado"]}
-            value={pubStatus}
-            onChange={setPubStatus}
+            options={dictOptions(PUBLICATION_STATUS_LABELS)}
+            value={form.publication_status}
+            onChange={(v) => patch({ publication_status: v })}
           />
         </Field>
+        <div className="md:col-span-2">
+          <label className="flex items-center gap-3 border border-[#E8E4DB] px-4 py-3 cursor-pointer hover:border-[#0B1F3A] transition-colors w-fit">
+            <input
+              type="checkbox"
+              className="accent-[#0B1F3A]"
+              checked={form.featured}
+              onChange={(e) => patch({ featured: e.target.checked })}
+            />
+            <Star size={14} className="text-[#C9A84C]" />
+            <span className="text-[#1F2937] text-sm">Propiedad destacada (aparece primero en el sitio público)</span>
+          </label>
+        </div>
       </div>
     ),
 
     location: (
       <div className="grid md:grid-cols-2 gap-5">
         <Field label="País" required>
-          <Select options={["Colombia", "Panamá", "México"]} value={country} onChange={setCountry} />
+          <Select options={["Colombia", "Panamá", "México"]} value={form.location.country} onChange={(v) => patchLocation({ country: v })} placeholder="Seleccionar..." />
         </Field>
         <Field label="Departamento / Estado" required>
-          <Select
-            options={["Antioquia", "Cundinamarca", "Bolívar", "Valle del Cauca", "Atlántico"]}
-            value={state}
-            onChange={setState}
-          />
+          <Input value={form.location.state} onChange={(v) => patchLocation({ state: v })} placeholder="Antioquia" />
         </Field>
-        <Field label="Ciudad" required error={!city ? "Este campo es requerido" : ""}>
-          <Select
-            options={["Medellín", "Bogotá", "Cartagena", "Cali", "Barranquilla", "Santa Marta"]}
-            value={city}
-            onChange={setCity}
-          />
+        <Field label="Ciudad" required error={!form.location.city ? "Este campo es requerido" : ""}>
+          <Input value={form.location.city} onChange={(v) => patchLocation({ city: v })} placeholder="Medellín" />
         </Field>
         <Field label="Barrio / Urbanización">
-          <Input value={neighborhood} onChange={setNeighborhood} placeholder="El Poblado" />
+          <Input value={form.location.neighborhood} onChange={(v) => patchLocation({ neighborhood: v })} placeholder="El Poblado" />
         </Field>
         <Field label="Dirección" required>
-          <Input value={address} onChange={setAddress} placeholder="Calle 8 Sur # 43A-75" />
+          <Input value={form.location.address} onChange={(v) => patchLocation({ address: v })} placeholder="Calle 8 Sur # 43A-75" />
         </Field>
         <Field label="Estrato" hint="Estrato socioeconómico en Colombia (1–6)">
-          <Select options={["1", "2", "3", "4", "5", "6"]} value={stratum} onChange={setStratum} />
+          <Select
+            options={["1", "2", "3", "4", "5", "6"]}
+            value={form.location.stratum ? String(form.location.stratum) : ""}
+            onChange={(v) => patchLocation({ stratum: numeric(v) })}
+            placeholder="Seleccionar..."
+          />
         </Field>
-        <div className="md:col-span-2">
-          <Field label="Coordenadas (mapa)">
-            <div className="border border-[#E8E4DB] bg-[#F0EDE6] relative overflow-hidden" style={{ height: "200px" }}>
-              <img
-                src="https://images.unsplash.com/photo-1569336415962-a4bd9f69cd83?w=800&h=200&fit=crop&auto=format"
-                alt="Mapa"
-                className="w-full h-full object-cover opacity-60"
-              />
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <div className="bg-white/90 px-4 py-2 flex items-center gap-2 shadow">
-                  <MapPin size={14} className="text-[#C9A84C]" />
-                  <span className="text-[#0B1F3A] text-xs font-semibold">El Poblado, Medellín · 6.2022° N, 75.5741° W</span>
-                </div>
-                <p className="text-[#6B7280] text-xs mt-2 bg-white/80 px-2 py-1">
-                  Integración con Google Maps disponible en producción
-                </p>
-              </div>
-            </div>
-          </Field>
-        </div>
+        <Field label="Latitud">
+          <Input type="number" value={form.location.coordinates.lat ? String(form.location.coordinates.lat) : ""} onChange={(v) => patchLocation({ coordinates: { ...form.location.coordinates, lat: numeric(v) } })} placeholder="6.2022" />
+        </Field>
+        <Field label="Longitud">
+          <Input type="number" value={form.location.coordinates.lng ? String(form.location.coordinates.lng) : ""} onChange={(v) => patchLocation({ coordinates: { ...form.location.coordinates, lng: numeric(v) } })} placeholder="-75.5741" />
+        </Field>
       </div>
     ),
 
     pricing: (
       <div className="grid md:grid-cols-2 gap-5">
         <Field label="Moneda">
-          <Select options={["COP", "USD", "EUR"]} value={currency} onChange={setCurrency} />
+          <Select options={["COP", "USD", "EUR"]} value={form.pricing.currency} onChange={(v) => patchPricing({ currency: v })} />
         </Field>
-        <Field label="Precio de venta" required error={!salePrice ? "Requerido" : ""}>
+        <Field label="Precio de venta" required={form.operation_type !== "rent"} error={!hasPrice ? "Ingresa precio de venta o de arriendo" : ""}>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm">$</span>
-            <Input type="number" value={salePrice} onChange={setSalePrice} className="pl-7" placeholder="850000000" />
+            <Input type="number" value={numStr(form.pricing.sale_price)} onChange={(v) => patchPricing({ sale_price: numeric(v) })} className="pl-7" placeholder="850000000" />
           </div>
         </Field>
         <Field label="Precio de arriendo / mes">
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm">$</span>
-            <Input type="number" className="pl-7" placeholder="5500000" />
+            <Input type="number" value={numStr(form.pricing.rent_price)} onChange={(v) => patchPricing({ rent_price: numeric(v) })} className="pl-7" placeholder="5500000" />
           </div>
         </Field>
         <Field label="Cuota de administración / mes">
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm">$</span>
-            <Input type="number" value={adminFee} onChange={setAdminFee} className="pl-7" placeholder="450000" />
+            <Input type="number" value={numStr(form.pricing.admin_fee)} onChange={(v) => patchPricing({ admin_fee: numeric(v) })} className="pl-7" placeholder="450000" />
           </div>
         </Field>
         <Field label="Impuestos anuales (predial)">
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm">$</span>
-            <Input type="number" className="pl-7" placeholder="1200000" />
+            <Input type="number" value={numStr(form.pricing.taxes)} onChange={(v) => patchPricing({ taxes: numeric(v) })} className="pl-7" placeholder="1200000" />
           </div>
         </Field>
         <Field label="Texto de precio visible" hint="Ej. Precio a convenir">
-          <Input placeholder="Precio a convenir" />
+          <Input value={form.pricing.display_price_text} onChange={(v) => patchPricing({ display_price_text: v })} placeholder="Precio a convenir" />
         </Field>
-        <div className="md:col-span-2">
-          <div className="bg-[#F0EDE6] border border-[#C9A84C]/30 p-4 flex items-start gap-3">
-            <Info size={14} className="text-[#C9A84C] mt-0.5 shrink-0" />
-            <p className="text-[#1F2937] text-xs leading-relaxed">
-              Los precios se muestran en la moneda seleccionada. Para propiedades internacionales,
-              asegúrese de incluir la tasa de cambio vigente. La administración y los impuestos
-              son opcionales pero mejoran la conversión del anuncio.
-            </p>
-          </div>
-        </div>
       </div>
     ),
 
@@ -311,50 +418,56 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
       <div className="grid md:grid-cols-2 gap-5">
         <Field label="Área construida (m²)" required>
           <div className="relative">
-            <Input type="number" value={builtArea} onChange={setBuiltArea} placeholder="180" />
+            <Input type="number" value={numStr(form.areas.built_area_m2)} onChange={(v) => patchAreas({ built_area_m2: numeric(v) })} placeholder="180" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-xs">m²</span>
           </div>
         </Field>
         <Field label="Área privada (m²)">
           <div className="relative">
-            <Input type="number" placeholder="165" />
+            <Input type="number" value={numStr(form.areas.private_area_m2)} onChange={(v) => patchAreas({ private_area_m2: numeric(v) })} placeholder="165" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-xs">m²</span>
           </div>
         </Field>
         <Field label="Área de lote (m²)">
           <div className="relative">
-            <Input type="number" value={landArea} onChange={setLandArea} placeholder="200" />
+            <Input type="number" value={numStr(form.areas.lot_area_m2)} onChange={(v) => patchAreas({ lot_area_m2: numeric(v) })} placeholder="200" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-xs">m²</span>
           </div>
         </Field>
         <Field label="Área total terreno (m²)">
           <div className="relative">
-            <Input type="number" placeholder="200" />
+            <Input type="number" value={numStr(form.areas.land_area_m2)} onChange={(v) => patchAreas({ land_area_m2: numeric(v) })} placeholder="200" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-xs">m²</span>
           </div>
         </Field>
         <Field label="Frente (m)">
-          <Input type="number" placeholder="12" />
+          <Input type="number" value={numStr(form.areas.front_m)} onChange={(v) => patchAreas({ front_m: numeric(v) })} placeholder="12" />
         </Field>
         <Field label="Fondo (m)">
-          <Input type="number" placeholder="16" />
+          <Input type="number" value={numStr(form.areas.back_m)} onChange={(v) => patchAreas({ back_m: numeric(v) })} placeholder="16" />
         </Field>
 
         <div className="md:col-span-2 border-t border-[#E8E4DB] pt-5 mt-1">
           <p className="text-[#0B1F3A] text-xs font-semibold uppercase tracking-wide mb-4">Distribución</p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {[
-              { label: "Habitaciones", val: bedrooms, set: setBedrooms },
-              { label: "Baños completos", val: bathrooms, set: setBathrooms },
-              { label: "Medios baños", val: "1", set: () => {} },
-              { label: "Parqueaderos", val: parking, set: setParking },
-              { label: "Pisos del inmueble", val: "14", set: () => {} },
-              { label: "Piso de la unidad", val: "12", set: () => {} },
-            ].map(({ label, val, set }) => (
-              <Field key={label} label={label}>
-                <Input type="number" value={val} onChange={set} placeholder="0" />
-              </Field>
-            ))}
+            <Field label="Habitaciones">
+              <Input type="number" value={numStr(form.layout.bedrooms)} onChange={(v) => patchLayout({ bedrooms: numeric(v) })} placeholder="0" />
+            </Field>
+            <Field label="Baños completos">
+              <Input type="number" value={numStr(form.layout.bathrooms)} onChange={(v) => patchLayout({ bathrooms: numeric(v) })} placeholder="0" />
+            </Field>
+            <Field label="Medios baños">
+              <Input type="number" value={numStr(form.layout.half_bathrooms)} onChange={(v) => patchLayout({ half_bathrooms: numeric(v) })} placeholder="0" />
+            </Field>
+            <Field label="Parqueaderos">
+              <Input type="number" value={numStr(form.layout.parking_spaces)} onChange={(v) => patchLayout({ parking_spaces: numeric(v) })} placeholder="0" />
+            </Field>
+            <Field label="Pisos del inmueble">
+              <Input type="number" value={numStr(form.layout.floors)} onChange={(v) => patchLayout({ floors: numeric(v) })} placeholder="0" />
+            </Field>
+            <Field label="Piso de la unidad">
+              <Input type="number" value={numStr(form.layout.unit_floor)} onChange={(v) => patchLayout({ unit_floor: numeric(v) })} placeholder="0" />
+            </Field>
           </div>
         </div>
       </div>
@@ -364,26 +477,42 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
       <div className="space-y-7">
         <div className="grid md:grid-cols-2 gap-5">
           <Field label="Año de construcción">
-            <Input type="number" value={yearBuilt} onChange={setYearBuilt} placeholder="2019" />
+            <Input type="number" value={numStr(form.structure.year_built)} onChange={(v) => patchStructure({ year_built: numeric(v) })} placeholder="2019" />
           </Field>
-          <Field label="Antigüedad (años)" hint="Se calcula automáticamente si hay año de construcción">
-            <Input type="number" placeholder="6" className="bg-[#F8F7F4]" />
+          <Field label="Antigüedad (años)">
+            <Input type="number" value={numStr(form.structure.age_years)} onChange={(v) => patchStructure({ age_years: numeric(v) })} placeholder="6" />
           </Field>
           <Field label="Calidad de construcción">
             <Select
               options={["Alta", "Media-alta", "Media", "Media-baja"]}
-              value={constructionQuality}
-              onChange={setConstructionQuality}
+              value={form.structure.construction_quality}
+              onChange={(v) => patchStructure({ construction_quality: v })}
+              placeholder="Seleccionar..."
             />
           </Field>
           <Field label="Estado de conservación">
-            <Select options={["Excelente", "Muy bueno", "Bueno", "Regular", "Para remodelar"]} />
+            <Select
+              options={["Excelente", "Muy bueno", "Bueno", "Regular", "Para remodelar"]}
+              value={form.structure.conservation_status}
+              onChange={(v) => patchStructure({ conservation_status: v })}
+              placeholder="Seleccionar..."
+            />
           </Field>
           <Field label="Tipo de terreno">
-            <Select options={["Plano", "Inclinado", "Irregular", "Esquinero"]} />
+            <Select
+              options={["Plano", "Inclinado", "Irregular", "Esquinero"]}
+              value={form.structure.terrain_type}
+              onChange={(v) => patchStructure({ terrain_type: v })}
+              placeholder="Seleccionar..."
+            />
           </Field>
           <Field label="Tipo de estructura">
-            <Select options={["Concreto reforzado", "Metálica", "Mixta", "Mampostería"]} />
+            <Select
+              options={["Concreto reforzado", "Metálica", "Mixta", "Mampostería"]}
+              value={form.structure.structure_type}
+              onChange={(v) => patchStructure({ structure_type: v })}
+              placeholder="Seleccionar..."
+            />
           </Field>
         </div>
 
@@ -393,8 +522,8 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           </p>
           <ChipGroup
             options={INDOOR_FEATURES}
-            selected={indoorFeatures}
-            onToggle={toggle(indoorFeatures, setIndoorFeatures)}
+            selected={form.features.indoor}
+            onToggle={toggleFeature("indoor")}
           />
         </div>
 
@@ -404,8 +533,8 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           </p>
           <ChipGroup
             options={OUTDOOR_FEATURES}
-            selected={outdoorFeatures}
-            onToggle={toggle(outdoorFeatures, setOutdoorFeatures)}
+            selected={form.features.outdoor}
+            onToggle={toggleFeature("outdoor")}
           />
         </div>
 
@@ -415,8 +544,8 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           </p>
           <ChipGroup
             options={AMENITIES}
-            selected={amenities}
-            onToggle={toggle(amenities, setAmenities)}
+            selected={form.features.commercial}
+            onToggle={toggleFeature("commercial")}
           />
         </div>
       </div>
@@ -429,53 +558,78 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           <p className="text-[#0B1F3A] text-xs font-semibold uppercase tracking-wide mb-3">
             Fotos y archivos
           </p>
-          <div
-            className={`border-2 border-dashed p-10 text-center transition-colors ${
-              isDragging ? "border-[#C9A84C] bg-[#C9A84C]/5" : "border-[#E8E4DB] hover:border-[#0B1F3A]"
-            }`}
-            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={(e) => { e.preventDefault(); setIsDragging(false); }}
-          >
-            <Upload size={24} className="text-[#6B7280] mx-auto mb-3" />
-            <p className="text-[#1F2937] text-sm font-medium mb-1">Arrastra archivos aquí</p>
-            <p className="text-[#6B7280] text-xs mb-3">JPG, PNG, MP4, PDF · máx. 20MB por archivo</p>
-            <button className="bg-[#0B1F3A] text-white px-4 py-2 text-xs font-semibold hover:bg-[#C9A84C] hover:text-[#0B1F3A] transition-colors">
-              Seleccionar archivos
-            </button>
-          </div>
+          {!isEdit ? (
+            <div className="bg-[#F0EDE6] border-l-2 border-[#C9A84C] p-4 flex items-start gap-3">
+              <Info size={14} className="text-[#C9A84C] mt-0.5 shrink-0" />
+              <p className="text-[#1F2937] text-xs leading-relaxed">
+                Guarda primero la propiedad (borrador o publicada) para poder subir fotos.
+              </p>
+            </div>
+          ) : (
+            <div
+              className={`border-2 border-dashed p-10 text-center transition-colors ${
+                isDragging ? "border-[#C9A84C] bg-[#C9A84C]/5" : "border-[#E8E4DB] hover:border-[#0B1F3A]"
+              }`}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                void handleUpload(e.dataTransfer.files);
+              }}
+            >
+              {uploading
+                ? <Loader2 size={24} className="text-[#6B7280] mx-auto mb-3 animate-spin" />
+                : <Upload size={24} className="text-[#6B7280] mx-auto mb-3" />}
+              <p className="text-[#1F2937] text-sm font-medium mb-1">Arrastra archivos aquí</p>
+              <p className="text-[#6B7280] text-xs mb-3">JPG, PNG, WebP · máx. 10MB por foto · hasta 30 fotos</p>
+              <label className="inline-block bg-[#0B1F3A] text-white px-4 py-2 text-xs font-semibold hover:bg-[#C9A84C] hover:text-[#0B1F3A] transition-colors cursor-pointer">
+                Seleccionar archivos
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) void handleUpload(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Uploaded photos */}
-        <div>
-          <p className="text-[#0B1F3A] text-xs font-semibold uppercase tracking-wide mb-3">
-            Fotos cargadas (3) — arrastra para reordenar
-          </p>
-          <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-            {MOCK_PHOTOS.map((src, i) => (
-              <div key={i} className="relative group">
-                <img src={src} alt={`Foto ${i + 1}`} className="w-full aspect-[4/3] object-cover" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <button className="w-6 h-6 bg-white/20 flex items-center justify-center text-white hover:bg-[#C9A84C] transition-colors">
-                    <X size={12} />
-                  </button>
+        {isEdit && assets.length > 0 && (
+          <div>
+            <p className="text-[#0B1F3A] text-xs font-semibold uppercase tracking-wide mb-3">
+              Fotos cargadas ({assets.length})
+            </p>
+            <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
+              {assets.map((asset, i) => (
+                <div key={asset.id} className="relative group">
+                  <img src={asset.url} alt={`Foto ${i + 1}`} className="w-full aspect-[4/3] object-cover" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => void handleDeleteAsset(asset)}
+                      disabled={uploading}
+                      className="w-6 h-6 bg-white/20 flex items-center justify-center text-white hover:bg-red-500 transition-colors"
+                      title="Eliminar foto"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                  {i === 0 && (
+                    <span className="absolute top-1 left-1 bg-[#C9A84C] text-[#0B1F3A] text-xs px-1.5 py-0.5 font-semibold">
+                      Principal
+                    </span>
+                  )}
                 </div>
-                {i === 0 && (
-                  <span className="absolute top-1 left-1 bg-[#C9A84C] text-[#0B1F3A] text-xs px-1.5 py-0.5 font-semibold">
-                    Principal
-                  </span>
-                )}
-                <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5">
-                  {["Foto", "Foto", "Foto"][i]}
-                </div>
-              </div>
-            ))}
-            <div className="border border-dashed border-[#E8E4DB] aspect-[4/3] flex flex-col items-center justify-center text-[#6B7280] hover:border-[#0B1F3A] transition-colors cursor-pointer">
-              <Image size={18} className="mb-1" />
-              <span className="text-xs">Agregar</span>
+              ))}
             </div>
           </div>
-        </div>
+        )}
 
         {/* Media toggles */}
         <div>
@@ -483,14 +637,19 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
             Multimedia adicional
           </p>
           <div className="grid md:grid-cols-2 gap-3">
-            {[
-              { icon: MapPin, label: "Tiene mapa / ubicación" },
-              { icon: Video, label: "Tiene video de la propiedad" },
-              { icon: Layout, label: "Tiene planos arquitectónicos" },
-              { icon: Camera, label: "Tiene tour virtual 360°" },
-            ].map(({ icon: Icon, label }) => (
+            {([
+              { icon: MapPin, label: "Tiene mapa / ubicación", key: "has_map" },
+              { icon: Video, label: "Tiene video de la propiedad", key: "has_video" },
+              { icon: Layout, label: "Tiene planos arquitectónicos", key: "has_floorplans" },
+              { icon: Camera, label: "Tiene tour virtual 360°", key: "has_virtual_tour_360" },
+            ] as const).map(({ icon: Icon, label, key }) => (
               <label key={label} className="flex items-center gap-3 border border-[#E8E4DB] px-4 py-3 cursor-pointer hover:border-[#0B1F3A] transition-colors">
-                <input type="checkbox" className="accent-[#0B1F3A]" />
+                <input
+                  type="checkbox"
+                  className="accent-[#0B1F3A]"
+                  checked={form.media[key]}
+                  onChange={(e) => patchMedia({ [key]: e.target.checked })}
+                />
                 <Icon size={14} className="text-[#6B7280]" />
                 <span className="text-[#1F2937] text-sm">{label}</span>
               </label>
@@ -505,36 +664,41 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           </p>
           <div className="grid md:grid-cols-2 gap-5">
             <Field label="Nombre del agente">
-              <Input value={agentName} onChange={setAgentName} />
+              <Input value={form.commercial.agent_name} onChange={(v) => patchCommercial({ agent_name: v })} />
             </Field>
             <Field label="Nombre de la oficina">
-              <Input value="Century 21 Premium Bogotá" />
+              <Input value={form.commercial.office_name} onChange={(v) => patchCommercial({ office_name: v })} />
             </Field>
             <Field label="Teléfono de contacto">
-              <Input type="tel" value={agentPhone} onChange={setAgentPhone} />
+              <Input type="tel" value={form.commercial.phone} onChange={(v) => patchCommercial({ phone: v })} />
             </Field>
             <Field label="Correo electrónico">
-              <Input type="email" value={agentEmail} onChange={setAgentEmail} />
+              <Input type="email" value={form.commercial.email} onChange={(v) => patchCommercial({ email: v })} />
             </Field>
             <Field label="Link de WhatsApp">
-              <Input placeholder="https://wa.me/573001234567" />
+              <Input value={form.commercial.whatsapp_link} onChange={(v) => patchCommercial({ whatsapp_link: v })} placeholder="https://wa.me/573001234567" />
             </Field>
             <Field label="Horario de atención">
-              <Input placeholder="Lun–Vie 8am–6pm · Sáb 9am–1pm" />
+              <Input value={form.commercial.office_hours} onChange={(v) => patchCommercial({ office_hours: v })} placeholder="Lun–Vie 8am–6pm · Sáb 9am–1pm" />
             </Field>
           </div>
 
-          <div className="mt-4 bg-[#F0EDE6] border-l-2 border-[#C9A84C] p-3">
-            <p className="text-[#6B7280] text-xs">
-              <strong className="text-[#1F2937]">Metadatos:</strong> Actualizado el 13/06/2025 · Origen: Manual · ID interno: INM-009
-            </p>
-          </div>
+          {isEdit && (
+            <div className="mt-4 bg-[#F0EDE6] border-l-2 border-[#C9A84C] p-3">
+              <p className="text-[#6B7280] text-xs">
+                <strong className="text-[#1F2937]">Metadatos:</strong> Actualizado el {form.metadata.updated_at?.slice(0, 10) || "—"} · Origen: {form.metadata.source_system || "Manual"} · ID: {form.listing_id}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     ),
   };
 
   if (previewMode) {
+    const previewImg =
+      form.media.photos[0] ||
+      "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&h=500&fit=crop&auto=format";
     return (
       <div style={{ fontFamily: "'Inter', sans-serif" }}>
         <div className="flex items-center gap-3 mb-6">
@@ -547,43 +711,46 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
         </div>
         <div className="bg-[#F8F7F4] border border-[#E8E4DB]">
           <div className="relative h-72 overflow-hidden">
-            <img
-              src="https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&h=500&fit=crop&auto=format"
-              alt="Vista previa"
-              className="w-full h-full object-cover"
-            />
+            <img src={previewImg} alt="Vista previa" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#0B1F3A]/80 to-transparent" />
             <div className="absolute bottom-6 left-6">
               <div className="flex gap-2 mb-2">
-                <span className="bg-[#C9A84C] text-[#0B1F3A] text-xs font-bold px-2 py-0.5">Destacado</span>
-                <span className="bg-[#0B1F3A] text-white text-xs font-bold px-2 py-0.5">Venta</span>
+                {form.featured && <span className="bg-[#C9A84C] text-[#0B1F3A] text-xs font-bold px-2 py-0.5">Destacado</span>}
+                <span className="bg-[#0B1F3A] text-white text-xs font-bold px-2 py-0.5">
+                  {labelFor(OPERATION_TYPE_LABELS, form.operation_type)}
+                </span>
               </div>
               <h2 className="text-white mb-1" style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.5rem" }}>
-                {title}
+                {form.title || "Sin título"}
               </h2>
               <p className="text-white/70 text-sm flex items-center gap-1">
-                <MapPin size={12} /> {neighborhood}, {city}
+                <MapPin size={12} /> {[form.location.neighborhood, form.location.city].filter(Boolean).join(", ")}
               </p>
             </div>
           </div>
           <div className="p-6 grid md:grid-cols-3 gap-6">
             <div className="md:col-span-2">
               <p className="text-[#C9A84C] font-bold text-xl mb-1">
-                ${parseInt(salePrice || "0").toLocaleString("es-CO")} {currency}
+                ${(form.pricing.sale_price || form.pricing.rent_price).toLocaleString("es-CO")} {form.pricing.currency}
               </p>
-              <p className="text-[#6B7280] text-xs mb-4">Adm: ${parseInt(adminFee || "0").toLocaleString("es-CO")}/mes</p>
+              {form.pricing.admin_fee > 0 && (
+                <p className="text-[#6B7280] text-xs mb-4">Adm: ${form.pricing.admin_fee.toLocaleString("es-CO")}/mes</p>
+              )}
               <div className="flex gap-6 mb-4 text-sm text-[#1F2937]">
-                <span>{builtArea} m² construidos</span>
-                <span>{bedrooms} hab.</span>
-                <span>{bathrooms} baños</span>
-                <span>{parking} parq.</span>
+                <span>{form.areas.built_area_m2} m² construidos</span>
+                <span>{form.layout.bedrooms} hab.</span>
+                <span>{form.layout.bathrooms} baños</span>
+                <span>{form.layout.parking_spaces} parq.</span>
               </div>
-              <p className="text-[#6B7280] text-xs">Estrato {stratum} · {propertyType} · {operationType} · Año {yearBuilt}</p>
+              <p className="text-[#6B7280] text-xs">
+                {form.location.stratum > 0 && `Estrato ${form.location.stratum} · `}
+                {labelFor(PROPERTY_TYPE_LABELS, form.property_type)} · {labelFor(OPERATION_TYPE_LABELS, form.operation_type)}
+                {form.structure.year_built > 0 && ` · Año ${form.structure.year_built}`}
+              </p>
             </div>
             <div className="bg-[#0B1F3A] p-4 text-center">
-              <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=60&h=60&fit=crop&auto=format" alt="Aura" className="w-12 h-12 object-cover rounded-full mx-auto mb-2" />
-              <p className="text-white text-sm font-semibold">{agentName}</p>
-              <p className="text-[#C9A84C] text-xs mb-3">Century 21 Colombia</p>
+              <p className="text-white text-sm font-semibold">{form.commercial.agent_name || "Agente"}</p>
+              <p className="text-[#C9A84C] text-xs mb-3">{form.commercial.office_name || "Century 21 Colombia"}</p>
               <button className="w-full bg-[#C9A84C] text-[#0B1F3A] text-xs py-2 font-semibold mb-2">WhatsApp</button>
               <button className="w-full border border-white/30 text-white text-xs py-2">Llamar</button>
             </div>
@@ -604,7 +771,9 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           <ArrowLeft size={13} /> Propiedades
         </button>
         <ChevronRight size={14} className="text-[#E8E4DB]" />
-        <span className="text-[#1F2937] text-sm font-medium">Nueva propiedad</span>
+        <span className="text-[#1F2937] text-sm font-medium">
+          {isEdit ? "Editar propiedad" : "Nueva propiedad"}
+        </span>
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
@@ -613,8 +782,13 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
             Formulario de propiedad
           </h1>
           <div className="flex items-center gap-2 mt-1">
-            <span className="bg-[#E8E4DB] text-[#6B7280] text-xs px-2 py-0.5">Borrador</span>
-            <span className="text-[#6B7280] text-xs">INM-009 · Guardado hace 2 min</span>
+            <span className="bg-[#E8E4DB] text-[#6B7280] text-xs px-2 py-0.5">
+              {labelFor(PUBLICATION_STATUS_LABELS, form.publication_status)}
+            </span>
+            <span className="text-[#6B7280] text-xs">
+              {form.listing_id ? `${form.listing_id}` : "Sin guardar"}
+              {savedAt && ` · Guardado ${savedAt}`}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -624,13 +798,18 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           >
             <Eye size={13} /> Vista previa
           </button>
-          <button className="border border-[#E8E4DB] text-[#6B7280] px-3 py-2 text-sm hover:border-[#0B1F3A] transition-colors">
-            Guardar borrador
+          <button
+            onClick={() => void save("draft")}
+            disabled={saving || !form.title.trim()}
+            className="border border-[#E8E4DB] text-[#6B7280] px-3 py-2 text-sm hover:border-[#0B1F3A] transition-colors disabled:opacity-50"
+          >
+            {saving ? "Guardando..." : "Guardar borrador"}
           </button>
           <button
-            disabled={!isValid}
+            disabled={!isValid || saving}
+            onClick={() => void save("published")}
             className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold transition-colors ${
-              isValid
+              isValid && !saving
                 ? "bg-[#0B1F3A] text-white hover:bg-[#C9A84C] hover:text-[#0B1F3A]"
                 : "bg-[#E8E4DB] text-[#9CA3AF] cursor-not-allowed"
             }`}
@@ -640,6 +819,13 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 mb-4 flex items-center gap-2 text-sm">
+          <AlertTriangle size={14} className="shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Sticky tab bar */}
       <div className="sticky top-0 z-30 bg-[#F8F7F4] border-b border-[#E8E4DB] mb-6 -mx-6 px-6">
@@ -683,7 +869,7 @@ export function ListingFormView({ onBack }: ListingFormViewProps) {
           <ArrowLeft size={13} /> Anterior
         </button>
         <div className="flex gap-1">
-          {TABS.map((t, i) => (
+          {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
