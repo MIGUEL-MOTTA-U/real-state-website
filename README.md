@@ -69,7 +69,28 @@ pnpm dev
 
 # Construir la aplicación para producción
 pnpm build
+
+# Ejecutar los tests de integración del cliente API (vitest)
+pnpm test
 ```
+
+---
+
+## Integración con el Backend
+
+El front consume el API REST de `rs-lambda-go` (AWS Lambda + API Gateway HTTP API). La capa de integración vive en `src/app/services/`:
+
+- `api.ts`: cliente HTTP tipado (punto único para adjuntar el token de Cognito en la Etapa 2).
+- `types.ts`: tipos espejo del modelo JSON del backend.
+- `mappers.ts`: diccionarios código ↔ etiqueta y transformaciones API → UI.
+
+Configuración por variable de entorno (ver `.env.example`):
+
+| Variable | Descripción |
+| :--- | :--- |
+| `VITE_API_URL` | URL base del backend. En Vercel: la URL del API Gateway. Sin definir: `http://localhost:8080` (backend local con `go run .`). |
+
+Para desarrollo local completo: levantar el backend con `go run .` (sirve en `http://localhost:8080` y lee su `.env`) y luego `pnpm dev`.
 
 ---
 
