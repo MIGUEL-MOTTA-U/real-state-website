@@ -1,38 +1,15 @@
 import { useState } from "react";
 import {
   Search, ChevronUp, ChevronDown, ChevronsUpDown,
-  Eye, Edit, Archive, Trash2, Star, MoreHorizontal,
-  Plus, Filter, Download, CheckSquare, Square
+  Edit, Archive, Trash2, Star,
+  Plus, Filter, CheckSquare, Square, Loader2, AlertTriangle, RefreshCw
 } from "lucide-react";
+import { useListings } from "../hooks/useListings";
+import { listingsApi, ApiError } from "../services/api";
+import type { ApiListing } from "../services/types";
+import { toListingRow, type ListingRow } from "../services/mappers";
 
-interface Listing {
-  id: string;
-  title: string;
-  location: string;
-  price: string;
-  type: string;
-  operation: string;
-  status: "Publicado" | "Borrador" | "Archivado";
-  featured: boolean;
-  area: number;
-  beds: number;
-  created: string;
-  updated: string;
-  img: string;
-}
-
-const MOCK_LISTINGS: Listing[] = [
-  { id: "INM-001", title: "Apto de Lujo El Poblado", location: "Medellín", price: "$850.000.000", type: "Apartamento", operation: "Venta", status: "Publicado", featured: true, area: 180, beds: 3, created: "2025-05-12", updated: "2025-06-10", img: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=60&h=45&fit=crop&auto=format" },
-  { id: "INM-002", title: "Casa Campestre La Calera", location: "Cundinamarca", price: "$2.400.000.000", type: "Casa", operation: "Venta", status: "Publicado", featured: false, area: 320, beds: 5, created: "2025-04-20", updated: "2025-06-08", img: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=60&h=45&fit=crop&auto=format" },
-  { id: "INM-003", title: "Penthouse Bocagrande", location: "Cartagena", price: "$2.980.000.000", type: "Penthouse", operation: "Venta", status: "Publicado", featured: true, area: 280, beds: 4, created: "2025-03-15", updated: "2025-06-11", img: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=60&h=45&fit=crop&auto=format" },
-  { id: "INM-004", title: "Apto Laureles", location: "Medellín", price: "$490.000.000", type: "Apartamento", operation: "Venta", status: "Borrador", featured: false, area: 95, beds: 2, created: "2025-06-01", updated: "2025-06-05", img: "https://images.unsplash.com/photo-1567496898669-ee935191af30?w=60&h=45&fit=crop&auto=format" },
-  { id: "INM-005", title: "Casa Rosales", location: "Bogotá", price: "$1.800.000.000", type: "Casa", operation: "Venta", status: "Borrador", featured: false, area: 260, beds: 4, created: "2025-06-05", updated: "2025-06-06", img: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=60&h=45&fit=crop&auto=format" },
-  { id: "INM-006", title: "Local Comercial Chapinero", location: "Bogotá", price: "$3.500.000/mes", type: "Local", operation: "Arriendo", status: "Publicado", featured: false, area: 140, beds: 0, created: "2025-02-10", updated: "2025-05-30", img: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=60&h=45&fit=crop&auto=format" },
-  { id: "INM-007", title: "Oficina Piso 14 WTC", location: "Bogotá", price: "$8.500.000/mes", type: "Oficina", operation: "Arriendo", status: "Archivado", featured: false, area: 85, beds: 0, created: "2024-11-20", updated: "2025-04-15", img: "https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=60&h=45&fit=crop&auto=format" },
-  { id: "INM-008", title: "Finca Santa Helena", location: "Antioquia", price: "$4.200.000.000", type: "Finca", operation: "Venta", status: "Publicado", featured: true, area: 1200, beds: 6, created: "2025-01-08", updated: "2025-06-09", img: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=60&h=45&fit=crop&auto=format" },
-];
-
-type SortKey = keyof Listing;
+type SortKey = Exclude<keyof ListingRow, "raw" | "img">;
 type SortDir = "asc" | "desc" | null;
 
 function statusStyle(s: string) {
@@ -44,17 +21,21 @@ function statusStyle(s: string) {
 
 interface ListingsTableProps {
   onNewListing: () => void;
-  onEditListing: () => void;
+  onEditListing: (listing: ApiListing) => void;
 }
 
 export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProps) {
+  const { listings, loading, error, refresh } = useListings();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("Todos");
   const [operationFilter, setOperationFilter] = useState<string>("Todos");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const rows = listings.map(toListingRow);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -66,10 +47,58 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
     }
   };
 
-  const filtered = MOCK_LISTINGS
+  const runAction = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await action();
+      await refresh();
+      setSelected(new Set());
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? `${err.message} (${err.code})` : "Error de conexión con el servidor",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const archiveListing = (row: ListingRow) =>
+    runAction(async () => {
+      await listingsApi.update(row.id, { ...row.raw, publication_status: "archived" });
+    });
+
+  const deleteListing = (row: ListingRow) => {
+    if (!window.confirm(`¿Eliminar definitivamente "${row.title}"?`)) return;
+    void runAction(async () => {
+      await listingsApi.remove(row.id);
+    });
+  };
+
+  const archiveSelected = () =>
+    runAction(async () => {
+      const targets = rows.filter((r) => selected.has(r.id));
+      for (const row of targets) {
+        await listingsApi.update(row.id, { ...row.raw, publication_status: "archived" });
+      }
+    });
+
+  const deleteSelected = () => {
+    if (!window.confirm(`¿Eliminar definitivamente ${selected.size} propiedades?`)) return;
+    void runAction(async () => {
+      for (const id of selected) {
+        await listingsApi.remove(id);
+      }
+    });
+  };
+
+  const filtered = rows
     .filter((l) => {
       const q = search.toLowerCase();
-      const matchSearch = l.title.toLowerCase().includes(q) || l.location.toLowerCase().includes(q) || l.id.toLowerCase().includes(q);
+      const matchSearch =
+        l.title.toLowerCase().includes(q) ||
+        l.location.toLowerCase().includes(q) ||
+        l.id.toLowerCase().includes(q);
       const matchStatus = statusFilter === "Todos" || l.status === statusFilter;
       const matchOp = operationFilter === "Todos" || l.operation === operationFilter;
       return matchSearch && matchStatus && matchOp;
@@ -78,7 +107,10 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
       if (!sortKey || !sortDir) return 0;
       const av = a[sortKey];
       const bv = b[sortKey];
-      const cmp = typeof av === "string" ? av.localeCompare(bv as string) : (av as number) - (bv as number);
+      const cmp =
+        typeof av === "string"
+          ? av.localeCompare(bv as string)
+          : Number(av) - Number(bv);
       return sortDir === "asc" ? cmp : -cmp;
     });
 
@@ -112,11 +144,14 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
           >
             Gestión de propiedades
           </h1>
-          <p className="text-[#6B7280] text-sm">{MOCK_LISTINGS.length} propiedades en total</p>
+          <p className="text-[#6B7280] text-sm">{rows.length} propiedades en total</p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1.5 border border-[#E8E4DB] text-[#6B7280] px-3 py-2 text-sm hover:border-[#0B1F3A] transition-colors">
-            <Download size={13} /> Exportar
+          <button
+            onClick={() => void refresh()}
+            className="flex items-center gap-1.5 border border-[#E8E4DB] text-[#6B7280] px-3 py-2 text-sm hover:border-[#0B1F3A] transition-colors"
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Actualizar
           </button>
           <button
             onClick={onNewListing}
@@ -126,6 +161,17 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
           </button>
         </div>
       </div>
+
+      {/* API errors */}
+      {(error || actionError) && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 mb-4 flex items-center gap-2 text-sm">
+          <AlertTriangle size={14} className="shrink-0" />
+          <span>{error ?? actionError}</span>
+          <button onClick={() => void refresh()} className="ml-auto underline text-xs">
+            Reintentar
+          </button>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="bg-white border border-[#E8E4DB] p-4 mb-4 flex flex-col md:flex-row gap-3">
@@ -162,6 +208,8 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
             <option>Todos</option>
             <option>Venta</option>
             <option>Arriendo</option>
+            <option>Venta y Arriendo</option>
+            <option>Permuta</option>
           </select>
         </div>
       </div>
@@ -170,10 +218,18 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
       {selected.size > 0 && (
         <div className="bg-[#0B1F3A] text-white px-4 py-2.5 mb-0 flex items-center gap-4 text-sm">
           <span className="text-[#C9A84C] font-semibold">{selected.size} seleccionadas</span>
-          <button className="text-white/70 hover:text-white text-xs flex items-center gap-1">
+          <button
+            onClick={() => void archiveSelected()}
+            disabled={busy}
+            className="text-white/70 hover:text-white text-xs flex items-center gap-1 disabled:opacity-40"
+          >
             <Archive size={12} /> Archivar
           </button>
-          <button className="text-red-400 hover:text-red-300 text-xs flex items-center gap-1">
+          <button
+            onClick={deleteSelected}
+            disabled={busy}
+            className="text-red-400 hover:text-red-300 text-xs flex items-center gap-1 disabled:opacity-40"
+          >
             <Trash2 size={12} /> Eliminar
           </button>
           <button className="ml-auto text-white/40 hover:text-white text-xs" onClick={() => setSelected(new Set())}>
@@ -236,7 +292,7 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
                 <td className="px-4 py-3">
                   <img src={l.img} alt={l.title} className="w-14 h-10 object-cover" />
                 </td>
-                <td className="px-4 py-3 text-[#6B7280] text-xs font-mono">{l.id}</td>
+                <td className="px-4 py-3 text-[#6B7280] text-xs font-mono truncate max-w-[110px]" title={l.id}>{l.id}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5">
                     {l.featured && <Star size={11} className="text-[#C9A84C] shrink-0" fill="currentColor" />}
@@ -261,27 +317,25 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-0.5 relative">
                     <button
-                      className="p-1.5 hover:bg-[#F0EDE6] text-[#6B7280] hover:text-[#0B1F3A] transition-colors"
-                      title="Vista previa"
-                    >
-                      <Eye size={13} />
-                    </button>
-                    <button
                       className="p-1.5 hover:bg-[#F0EDE6] text-[#6B7280] hover:text-[#C9A84C] transition-colors"
                       title="Editar"
-                      onClick={onEditListing}
+                      onClick={() => onEditListing(l.raw)}
                     >
                       <Edit size={13} />
                     </button>
                     <button
-                      className="p-1.5 hover:bg-[#F0EDE6] text-[#6B7280] hover:text-[#6B7280] transition-colors"
+                      className="p-1.5 hover:bg-[#F0EDE6] text-[#6B7280] hover:text-[#6B7280] transition-colors disabled:opacity-40"
                       title="Archivar"
+                      disabled={busy}
+                      onClick={() => void archiveListing(l)}
                     >
                       <Archive size={13} />
                     </button>
                     <button
-                      className="p-1.5 hover:bg-[#F0EDE6] text-[#6B7280] hover:text-red-500 transition-colors"
+                      className="p-1.5 hover:bg-[#F0EDE6] text-[#6B7280] hover:text-red-500 transition-colors disabled:opacity-40"
                       title="Eliminar"
+                      disabled={busy}
+                      onClick={() => deleteListing(l)}
                     >
                       <Trash2 size={13} />
                     </button>
@@ -292,29 +346,28 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
           </tbody>
         </table>
 
-        {filtered.length === 0 && (
+        {loading && (
           <div className="text-center py-16 text-[#6B7280]">
-            <Search size={24} className="mx-auto mb-3 opacity-40" />
-            <p className="text-sm">No se encontraron propiedades</p>
-            <p className="text-xs mt-1">Intenta con otros filtros de búsqueda</p>
+            <Loader2 size={24} className="mx-auto mb-3 animate-spin opacity-60" />
+            <p className="text-sm">Cargando propiedades...</p>
           </div>
         )}
 
-        {/* Pagination */}
-        <div className="border-t border-[#E8E4DB] px-4 py-3 flex items-center justify-between">
-          <p className="text-[#6B7280] text-xs">{filtered.length} de {MOCK_LISTINGS.length} propiedades</p>
-          <div className="flex items-center gap-1">
-            {[1, 2, 3].map((p) => (
-              <button
-                key={p}
-                className={`w-7 h-7 text-xs flex items-center justify-center transition-colors ${
-                  p === 1 ? "bg-[#0B1F3A] text-white" : "text-[#6B7280] hover:bg-[#F0EDE6]"
-                }`}
-              >
-                {p}
-              </button>
-            ))}
+        {!loading && filtered.length === 0 && (
+          <div className="text-center py-16 text-[#6B7280]">
+            <Search size={24} className="mx-auto mb-3 opacity-40" />
+            <p className="text-sm">No se encontraron propiedades</p>
+            <p className="text-xs mt-1">
+              {rows.length === 0
+                ? "Crea tu primera propiedad con el botón «Nueva propiedad»"
+                : "Intenta con otros filtros de búsqueda"}
+            </p>
           </div>
+        )}
+
+        {/* Footer */}
+        <div className="border-t border-[#E8E4DB] px-4 py-3 flex items-center justify-between">
+          <p className="text-[#6B7280] text-xs">{filtered.length} de {rows.length} propiedades</p>
         </div>
       </div>
     </div>
