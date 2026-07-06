@@ -7,6 +7,7 @@ import { DashboardOverview } from "./DashboardOverview";
 import { ListingsTable } from "./ListingsTable";
 import { ListingFormView } from "./ListingFormView";
 import { SettingsView } from "./SettingsView";
+import { useListings } from "../hooks/useListings";
 import type { ApiListing } from "../services/types";
 
 type DashView = "overview" | "listings" | "new-listing" | "edit-listing" | "settings";
@@ -26,6 +27,10 @@ export function DashboardShell({ onLogout }: DashboardShellProps) {
   const [view, setView] = useState<DashView>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingListing, setEditingListing] = useState<ApiListing | null>(null);
+  const { listings } = useListings();
+
+  const countByStatus = (status: string) =>
+    String(listings.filter((l) => l.publication_status === status).length);
 
   const pageTitle: Record<DashView, string> = {
     overview: "Resumen",
@@ -97,9 +102,9 @@ export function DashboardShell({ onLogout }: DashboardShellProps) {
             </p>
             <div className="px-3 py-2 space-y-2">
               {[
-                { label: "Publicadas", val: "32", color: "bg-green-400" },
-                { label: "Borradores", val: "11", color: "bg-amber-400" },
-                { label: "Archivadas", val: "4", color: "bg-gray-400" },
+                { label: "Publicadas", val: countByStatus("published"), color: "bg-green-400" },
+                { label: "Borradores", val: countByStatus("draft"), color: "bg-amber-400" },
+                { label: "Archivadas", val: countByStatus("archived"), color: "bg-gray-400" },
               ].map(({ label, val, color }) => (
                 <div key={label} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">

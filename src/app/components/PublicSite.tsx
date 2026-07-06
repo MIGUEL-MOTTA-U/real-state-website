@@ -5,9 +5,24 @@ import {
   Home, Key, TrendingUp, Shield, Star, Award,
   Instagram, Linkedin, Facebook, ArrowRight, Menu, X, Building2
 } from "lucide-react";
+import { listingsApi } from "../services/api";
+import { publishedFirst, toPublicCard } from "../services/mappers";
 
 interface PublicSiteProps {
   onNavigateToDashboard: () => void;
+}
+
+/** Tarjeta que renderiza la grilla de propiedades destacadas. */
+interface ListingCardData {
+  id: string | number;
+  title: string;
+  price: string;
+  area: number;
+  location: string;
+  status: string[];
+  beds: number;
+  baths: number;
+  img: string;
 }
 
   /* LISTINGS moved inside component */
@@ -31,8 +46,46 @@ function StatusBadge({ label }: { label: string }) {
 
 export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
   const { t } = useTranslation();
+  const [remoteListings, setRemoteListings] = useState<ListingCardData[] | null>(null);
 
-  const LISTINGS = [
+  // Carga los inmuebles publicados desde el backend. Si el API no está
+  // disponible se mantienen las tarjetas estáticas de demostración.
+  useEffect(() => {
+    let cancelled = false;
+    listingsApi
+      .list()
+      .then((all) => {
+        if (cancelled) return;
+        const cards = publishedFirst(all ?? [])
+          .slice(0, 6)
+          .map((l) => {
+            const card = toPublicCard(l);
+            return {
+              id: card.id,
+              title: card.title,
+              price: card.price,
+              area: card.area,
+              location: card.location,
+              status: [
+                ...(card.featured ? [t("public.listings.status.featured")] : []),
+                card.operation,
+              ],
+              beds: card.beds,
+              baths: card.baths,
+              img: card.img,
+            } satisfies ListingCardData;
+          });
+        if (cards.length > 0) setRemoteListings(cards);
+      })
+      .catch(() => {
+        /* sin API: se conservan las tarjetas estáticas */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
+
+  const LISTINGS: ListingCardData[] = remoteListings ?? [
     {
       id: 1,
       title: t('public.listings.title_1'),

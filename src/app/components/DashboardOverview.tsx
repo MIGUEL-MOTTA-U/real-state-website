@@ -1,14 +1,22 @@
 import { Building2, Eye, FileEdit, Star, TrendingUp, TrendingDown, Clock, CheckCircle2, AlertCircle, Edit3, Archive } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useListings } from "../hooks/useListings";
+import { displayPrice } from "../services/mappers";
 
 export function DashboardOverview() {
   const { t } = useTranslation();
+  const { listings } = useListings();
+
+  const published = listings.filter((l) => l.publication_status === "published").length;
+  const drafts = listings.filter((l) => l.publication_status === "draft").length;
+  const archived = listings.filter((l) => l.publication_status === "archived").length;
+  const featured = listings.filter((l) => l.featured).length;
 
   const KPI_CARDS = [
     {
       label: t('dashboard.kpis.total'),
-      value: "47",
-      delta: t('dashboard.kpiDelta.thisMonth', { count: "+3" }),
+      value: String(listings.length),
+      delta: "",
       up: true,
       icon: Building2,
       color: "bg-[#0B1F3A]",
@@ -16,8 +24,8 @@ export function DashboardOverview() {
     },
     {
       label: t('dashboard.kpis.published'),
-      value: "32",
-      delta: t('dashboard.kpiDelta.thisWeek', { count: "+2" }),
+      value: String(published),
+      delta: "",
       up: true,
       icon: Eye,
       color: "bg-[#C9A84C]",
@@ -25,8 +33,8 @@ export function DashboardOverview() {
     },
     {
       label: t('dashboard.kpis.drafts'),
-      value: "11",
-      delta: t('dashboard.kpiDelta.pending', { count: "4" }),
+      value: String(drafts),
+      delta: archived > 0 ? t('dashboard.status.archived') + `: ${archived}` : "",
       up: false,
       icon: FileEdit,
       color: "bg-[#1F2937]",
@@ -34,8 +42,8 @@ export function DashboardOverview() {
     },
     {
       label: t('dashboard.kpis.featured'),
-      value: "8",
-      delta: t('dashboard.kpiDelta.thisWeek', { count: "+1" }),
+      value: String(featured),
+      delta: "",
       up: true,
       icon: Star,
       color: "bg-[#E8E4DB]",
@@ -91,36 +99,25 @@ export function DashboardOverview() {
     },
   ];
 
-  const RECENT_LISTINGS = [
-    {
-      title: "Apartamento El Poblado",
-      price: "$850.000.000",
-      status: t('dashboard.status.published'),
-      views: 234,
-      img: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=80&h=60&fit=crop&auto=format",
-    },
-    {
-      title: "Penthouse Cartagena",
-      price: "$2.980.000.000",
-      status: t('dashboard.status.featured'),
-      views: 512,
-      img: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=80&h=60&fit=crop&auto=format",
-    },
-    {
-      title: "Casa La Calera",
-      price: "$2.400.000.000",
-      status: t('dashboard.status.draft'),
+  const statusLabel = (code: string) => {
+    if (code === "published") return t('dashboard.status.published');
+    if (code === "draft") return t('dashboard.status.draft');
+    if (code === "archived") return t('dashboard.status.archived');
+    return code;
+  };
+
+  const RECENT_LISTINGS = [...listings]
+    .sort((a, b) => (b.metadata?.updated_at ?? "").localeCompare(a.metadata?.updated_at ?? ""))
+    .slice(0, 4)
+    .map((l) => ({
+      title: l.title,
+      price: displayPrice(l),
+      status: l.featured ? t('dashboard.status.featured') : statusLabel(l.publication_status),
       views: 0,
-      img: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=80&h=60&fit=crop&auto=format",
-    },
-    {
-      title: "Apartamento Laureles",
-      price: "$490.000.000",
-      status: t('dashboard.status.published'),
-      views: 88,
-      img: "https://images.unsplash.com/photo-1567496898669-ee93519 laT0?w=80&h=60&fit=crop&auto=format",
-    },
-  ];
+      img:
+        l.media?.photos?.[0] ||
+        "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=80&h=60&fit=crop&auto=format",
+    }));
 
   function statusStyle(s: string) {
     if (s === t('dashboard.status.published')) return "bg-green-100 text-green-800";
@@ -169,7 +166,7 @@ export function DashboardOverview() {
               {value}
             </p>
             <p className="text-[#6B7280] text-xs mb-1">{label}</p>
-            <p className={`text-xs ${up ? "text-green-600" : "text-amber-600"}`}>{delta}</p>
+            {delta && <p className={`text-xs ${up ? "text-green-600" : "text-amber-600"}`}>{delta}</p>}
           </div>
         ))}
       </div>
