@@ -6,6 +6,8 @@ import {
 import { DashboardOverview } from "./DashboardOverview";
 import { ListingsTable } from "./ListingsTable";
 import { ListingFormView } from "./ListingFormView";
+import { SettingsView } from "./SettingsView";
+import type { ApiListing } from "../services/types";
 
 type DashView = "overview" | "listings" | "new-listing" | "edit-listing" | "settings";
 
@@ -23,6 +25,7 @@ const NAV_ITEMS: { id: DashView; icon: typeof LayoutDashboard; label: string }[]
 export function DashboardShell({ onLogout }: DashboardShellProps) {
   const [view, setView] = useState<DashView>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [editingListing, setEditingListing] = useState<ApiListing | null>(null);
 
   const pageTitle: Record<DashView, string> = {
     overview: "Resumen",
@@ -187,69 +190,19 @@ export function DashboardShell({ onLogout }: DashboardShellProps) {
           {view === "overview" && <DashboardOverview />}
           {view === "listings" && (
             <ListingsTable
-              onNewListing={() => setView("new-listing")}
-              onEditListing={() => setView("edit-listing")}
+              onNewListing={() => { setEditingListing(null); setView("new-listing"); }}
+              onEditListing={(listing) => { setEditingListing(listing); setView("edit-listing"); }}
             />
           )}
           {(view === "new-listing" || view === "edit-listing") && (
-            <ListingFormView onBack={() => setView("listings")} />
+            <ListingFormView
+              listing={view === "edit-listing" ? editingListing : null}
+              onBack={() => setView("listings")}
+              onSaved={(saved) => setEditingListing(saved)}
+            />
           )}
           {view === "settings" && <SettingsView />}
         </main>
-      </div>
-    </div>
-  );
-}
-
-function SettingsView() {
-  return (
-    <div style={{ fontFamily: "'Inter', sans-serif" }}>
-      <div className="mb-8">
-        <h1
-          className="text-[#0B1F3A]"
-          style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.5rem", fontWeight: 600 }}
-        >
-          Configuración
-        </h1>
-        <p className="text-[#6B7280] text-sm mt-1">Gestiona tu perfil y preferencias del panel.</p>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="md:col-span-1">
-          <div className="bg-white border border-[#E8E4DB] p-5 text-center">
-            <img
-              src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop&auto=format"
-              alt="Aura Urrea"
-              className="w-20 h-20 object-cover rounded-full mx-auto mb-3"
-            />
-            <p className="text-[#0B1F3A] font-semibold text-sm">Aura Urrea</p>
-            <p className="text-[#6B7280] text-xs">Agente Senior · Century 21</p>
-            <button className="mt-3 w-full border border-[#E8E4DB] text-[#6B7280] text-xs py-2 hover:border-[#0B1F3A] hover:text-[#0B1F3A] transition-colors">
-              Cambiar foto
-            </button>
-          </div>
-        </div>
-
-        <div className="md:col-span-2 space-y-4">
-          {[
-            { label: "Nombre completo", val: "Aura Urrea", type: "text" },
-            { label: "Correo electrónico", val: "aura.urrea@century21.com.co", type: "email" },
-            { label: "Teléfono", val: "+57 300 123 4567", type: "tel" },
-            { label: "Matrícula profesional", val: "LONJA Nº 12.847", type: "text" },
-          ].map(({ label, val, type }) => (
-            <div key={label} className="bg-white border border-[#E8E4DB] p-4">
-              <label className="text-[#6B7280] text-xs font-semibold block mb-1.5">{label}</label>
-              <input
-                type={type}
-                defaultValue={val}
-                className="w-full border border-[#E8E4DB] text-[#1F2937] text-sm px-3 py-2 focus:outline-none focus:border-[#0B1F3A] transition-colors bg-white"
-              />
-            </div>
-          ))}
-          <button className="bg-[#0B1F3A] text-white px-5 py-2.5 text-sm font-semibold hover:bg-[#C9A84C] hover:text-[#0B1F3A] transition-colors">
-            Guardar cambios
-          </button>
-        </div>
       </div>
     </div>
   );
