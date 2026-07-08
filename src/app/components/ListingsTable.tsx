@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Search, ChevronUp, ChevronDown, ChevronsUpDown,
   Edit, Archive, Trash2, Star,
@@ -35,7 +35,7 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const rows = listings.map(toListingRow);
+  const rows = useMemo(() => listings.map(toListingRow), [listings]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -92,27 +92,30 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
     });
   };
 
-  const filtered = rows
-    .filter((l) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        l.title.toLowerCase().includes(q) ||
-        l.location.toLowerCase().includes(q) ||
-        l.id.toLowerCase().includes(q);
-      const matchStatus = statusFilter === "Todos" || l.status === statusFilter;
-      const matchOp = operationFilter === "Todos" || l.operation === operationFilter;
-      return matchSearch && matchStatus && matchOp;
-    })
-    .sort((a, b) => {
-      if (!sortKey || !sortDir) return 0;
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      const cmp =
-        typeof av === "string"
-          ? av.localeCompare(bv as string)
-          : Number(av) - Number(bv);
-      return sortDir === "asc" ? cmp : -cmp;
-    });
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return rows
+      .filter((l) => {
+        const matchSearch =
+          l.title.toLowerCase().includes(q) ||
+          l.location.toLowerCase().includes(q) ||
+          l.id.toLowerCase().includes(q) ||
+          l.externalId.toLowerCase().includes(q);
+        const matchStatus = statusFilter === "Todos" || l.status === statusFilter;
+        const matchOp = operationFilter === "Todos" || l.operation === operationFilter;
+        return matchSearch && matchStatus && matchOp;
+      })
+      .sort((a, b) => {
+        if (!sortKey || !sortDir) return 0;
+        const av = a[sortKey];
+        const bv = b[sortKey];
+        const cmp =
+          typeof av === "string"
+            ? av.localeCompare(bv as string)
+            : Number(av) - Number(bv);
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+  }, [rows, search, statusFilter, operationFilter, sortKey, sortDir]);
 
   const toggleSelect = (id: string) => {
     const s = new Set(selected);

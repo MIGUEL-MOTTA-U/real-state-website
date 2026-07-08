@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle, CheckCircle2, Upload, X, MapPin,
   Video, Layout, Camera, ArrowLeft, Eye,
@@ -6,13 +6,23 @@ import {
 } from "lucide-react";
 import { listingsApi, uploadsApi, ApiError } from "../services/api";
 import type { ApiAsset, ApiListing } from "../services/types";
-import { emptyListing } from "../services/types";
+import { emptyListing, normalizeListing } from "../services/types";
 import {
   PROPERTY_TYPE_LABELS,
+  CLASSIFICATION_LABELS,
   OPERATION_TYPE_LABELS,
   PUBLICATION_STATUS_LABELS,
+  CURRENCY_OPTIONS,
   labelFor,
+  formatMoney,
 } from "../services/mappers";
+import {
+  validateListing,
+  ageFromYearBuilt,
+  pricePerM2,
+  lotAreaFromDimensions,
+  MAX_DESCRIPTION_SHORT,
+} from "../services/validation";
 
 type Tab = "general" | "location" | "pricing" | "areas" | "features" | "media";
 
@@ -28,16 +38,27 @@ const TABS: { id: Tab; label: string; num: number }[] = [
 const INDOOR_FEATURES = ["Cocina integral", "Cocina americana", "Sala-comedor", "Cuarto de servicio", "Estudio", "Depósito", "Chimenea", "Jacuzzi", "Sauna", "Vestier", "Balcón", "Terraza privada"];
 const OUTDOOR_FEATURES = ["Piscina", "Jardín privado", "Cancha de tenis", "Cancha multifuncional", "BBQ", "Vista al mar", "Vista a montaña", "Zona verde", "Parqueadero visitantes"];
 const AMENITIES = ["Gimnasio", "Salón social", "Piscina comunal", "Vigilancia 24h", "Portería", "Ascensor", "Parqueadero bicicletas", "Zona de mascotas", "Coworking"];
+// "Datos generales" del inmueble tal como llegan del proveedor (features.tags).
+const GENERAL_TAGS = [
+  "Agua Caliente", "Alarma De Incendios", "Ascensor", "Calentador De Agua Gas Natural",
+  "Circuito Cerrado De TV", "Mezanine", "Parqueadero Visitantes", "Portón Eléctrico",
+  "Puerta Seguridad", "Vista Panorámica", "Zona Residencial", "Trans. Público Cercano",
+  "Parques Cercanos", "PentHouse", "Servicios Públicos", "Sobre Vía Secundaria",
+  "Todos Los Servicios", "Ventilación Natural", "Recepción", "Cubículos",
+  "Buenos Accesos", "Rampa De Acceso", "Iluminación Natural",
+];
+const FLOOR_TYPES = ["Baldosa", "Cerámica", "Porcelanato", "Madera", "Laminado", "Mármol", "Alfombra", "Concreto", "Vinilo"];
 
 interface FieldProps {
   label: string;
   required?: boolean;
   hint?: string;
   error?: string;
+  warning?: string;
   children: React.ReactNode;
 }
 
-function Field({ label, required, hint, error, children }: FieldProps) {
+function Field({ label, required, hint, error, warning, children }: FieldProps) {
   return (
     <div>
       <div className="flex items-center gap-1 mb-1.5">
@@ -57,6 +78,11 @@ function Field({ label, required, hint, error, children }: FieldProps) {
       {error && (
         <p className="flex items-center gap-1 text-red-500 text-xs mt-1">
           <AlertCircle size={10} /> {error}
+        </p>
+      )}
+      {!error && warning && (
+        <p className="flex items-center gap-1 text-amber-600 text-xs mt-1">
+          <AlertTriangle size={10} /> {warning}
         </p>
       )}
     </div>
@@ -81,6 +107,20 @@ function Input({ placeholder, value, onChange, type = "text", className = "" }: 
 interface SelectOption {
   value: string;
   label: string;
+}
+
+function Textarea({ placeholder, value, onChange, rows = 4 }: {
+  placeholder?: string; value?: string; onChange?: (v: string) => void; rows?: number;
+}) {
+  return (
+    <textarea
+      rows={rows}
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange?.(e.target.value)}
+      className="w-full border border-[#E8E4DB] bg-white text-[#1F2937] text-sm px-3 py-2.5 focus:outline-none focus:border-[#0B1F3A] transition-colors placeholder-[#9CA3AF] resize-y"
+    />
+  );
 }
 
 function Select({ options, value, onChange, placeholder }: {
@@ -144,7 +184,9 @@ interface ListingFormViewProps {
 export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewProps) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const [previewMode, setPreviewMode] = useState(false);
-  const [form, setForm] = useState<ApiListing>(() => listing ?? emptyListing());
+  const [form, setForm] = useState<ApiListing>(() =>
+    listing ? normalizeListing(listing) : emptyListing(),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -174,18 +216,36 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
   const patchCommercial = (partial: Partial<ApiListing["commercial"]>) =>
     setForm((f) => ({ ...f, commercial: { ...f.commercial, ...partial } }));
 
-  const toggleFeature = (group: "indoor" | "outdoor" | "commercial") => (val: string) => {
+  const toggleFeature = (group: "indoor" | "outdoor" | "commercial" | "tags") => (val: string) => {
     const list = form.features[group];
     patchFeatures({
       [group]: list.includes(val) ? list.filter((x) => x !== val) : [...list, val],
     });
   };
 
-  // Validation: required fields
-  const hasPrice = form.pricing.sale_price > 0 || form.pricing.rent_price > 0;
-  const isValid = Boolean(
-    form.title.trim() && form.property_type && form.operation_type && form.location.city && hasPrice,
-  );
+  // Validación lógica centralizada (services/validation.ts).
+  const { errors, warnings } = useMemo(() => validateListing(form), [form]);
+  const errorCount = Object.keys(errors).length;
+  const isValid = errorCount === 0;
+
+  // Errores agrupados por pestaña para señalizar dónde falta corregir.
+  const tabOfField = (field: string): Tab => {
+    if (field.startsWith("location.")) return "location";
+    if (field.startsWith("pricing.")) return "pricing";
+    if (field.startsWith("areas.") || field.startsWith("layout.")) return "areas";
+    if (field.startsWith("structure.")) return "features";
+    return "general";
+  };
+  const errorsByTab = useMemo(() => {
+    const counts: Record<Tab, number> = { general: 0, location: 0, pricing: 0, areas: 0, features: 0, media: 0 };
+    for (const field of Object.keys(errors)) counts[tabOfField(field)] += 1;
+    return counts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errors]);
+
+  // Cálculos derivados.
+  const priceM2 = pricePerM2(form);
+  const suggestedLotArea = lotAreaFromDimensions(form.areas.front_m, form.areas.back_m);
 
   // ── Media loading ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -282,14 +342,17 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
         <Field label="ID de propiedad" hint="Generado automáticamente al guardar">
           <Input value={form.listing_id || "(se genera al guardar)"} className="bg-[#F8F7F4] text-[#6B7280] cursor-not-allowed" />
         </Field>
-        <Field label="Slug / URL">
+        <Field label="ID externo" hint="Identificador del inmueble en el sistema de origen">
+          <Input value={form.external_id} onChange={(v) => patch({ external_id: v })} placeholder="C21-12345" />
+        </Field>
+        <Field label="Slug / URL" error={errors["slug"]}>
           <Input
             value={form.slug}
             onChange={(v) => patch({ slug: v.toLowerCase().replace(/\s+/g, "-") })}
             placeholder="apartamento-lujo-el-poblado"
           />
         </Field>
-        <Field label="Título del anuncio" required error={!form.title ? "Este campo es requerido" : ""}>
+        <Field label="Título del anuncio" required error={errors["title"]}>
           <Input value={form.title} onChange={(v) => patch({ title: v })} placeholder="Ej. Apartamento de Lujo en El Poblado" />
         </Field>
         <Field label="Idioma">
@@ -299,7 +362,7 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
             onChange={(v) => patch({ language: v })}
           />
         </Field>
-        <Field label="Tipo de propiedad" required>
+        <Field label="Tipo de propiedad" required error={errors["property_type"]}>
           <Select
             options={dictOptions(PROPERTY_TYPE_LABELS)}
             value={form.property_type}
@@ -315,7 +378,15 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
             placeholder="Seleccionar..."
           />
         </Field>
-        <Field label="Tipo de operación" required>
+        <Field label="Clasificación" hint="Uso del inmueble según su destinación">
+          <Select
+            options={dictOptions(CLASSIFICATION_LABELS)}
+            value={form.classification}
+            onChange={(v) => patch({ classification: v })}
+            placeholder="Seleccionar..."
+          />
+        </Field>
+        <Field label="Tipo de operación" required error={errors["operation_type"]}>
           <Select
             options={dictOptions(OPERATION_TYPE_LABELS)}
             value={form.operation_type}
@@ -330,6 +401,33 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
             onChange={(v) => patch({ publication_status: v })}
           />
         </Field>
+        <div className="md:col-span-2">
+          <Field
+            label="Descripción corta"
+            hint="Resumen que se muestra en tarjetas y listados"
+            warning={warnings["description_short"]}
+          >
+            <Textarea
+              rows={3}
+              value={form.description_short}
+              onChange={(v) => patch({ description_short: v })}
+              placeholder="Exclusivo edificio esquinero ubicado en el sector de La Castellana..."
+            />
+            <p className={`text-xs mt-1 text-right ${form.description_short.length > MAX_DESCRIPTION_SHORT ? "text-amber-600" : "text-[#9CA3AF]"}`}>
+              {form.description_short.length}/{MAX_DESCRIPTION_SHORT}
+            </p>
+          </Field>
+        </div>
+        <div className="md:col-span-2">
+          <Field label="Descripción larga" hint="Opcional: si se deja vacía se usa la descripción corta">
+            <Textarea
+              rows={6}
+              value={form.description_long}
+              onChange={(v) => patch({ description_long: v })}
+              placeholder="Descripción completa del inmueble (opcional)"
+            />
+          </Field>
+        </div>
         <div className="md:col-span-2">
           <label className="flex items-center gap-3 border border-[#E8E4DB] px-4 py-3 cursor-pointer hover:border-[#0B1F3A] transition-colors w-fit">
             <input
@@ -353,7 +451,7 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
         <Field label="Departamento / Estado" required>
           <Input value={form.location.state} onChange={(v) => patchLocation({ state: v })} placeholder="Antioquia" />
         </Field>
-        <Field label="Ciudad" required error={!form.location.city ? "Este campo es requerido" : ""}>
+        <Field label="Ciudad" required error={errors["location.city"]}>
           <Input value={form.location.city} onChange={(v) => patchLocation({ city: v })} placeholder="Medellín" />
         </Field>
         <Field label="Barrio / Urbanización">
@@ -362,7 +460,7 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
         <Field label="Dirección" required>
           <Input value={form.location.address} onChange={(v) => patchLocation({ address: v })} placeholder="Calle 8 Sur # 43A-75" />
         </Field>
-        <Field label="Estrato" hint="Estrato socioeconómico en Colombia (1–6)">
+        <Field label="Estrato" hint="Estrato socioeconómico en Colombia (1–6)" error={errors["location.stratum"]}>
           <Select
             options={["1", "2", "3", "4", "5", "6"]}
             value={form.location.stratum ? String(form.location.stratum) : ""}
@@ -370,10 +468,10 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
             placeholder="Seleccionar..."
           />
         </Field>
-        <Field label="Latitud">
+        <Field label="Latitud" error={errors["location.lat"]}>
           <Input type="number" value={form.location.coordinates.lat ? String(form.location.coordinates.lat) : ""} onChange={(v) => patchLocation({ coordinates: { ...form.location.coordinates, lat: numeric(v) } })} placeholder="6.2022" />
         </Field>
-        <Field label="Longitud">
+        <Field label="Longitud" error={errors["location.lng"]}>
           <Input type="number" value={form.location.coordinates.lng ? String(form.location.coordinates.lng) : ""} onChange={(v) => patchLocation({ coordinates: { ...form.location.coordinates, lng: numeric(v) } })} placeholder="-75.5741" />
         </Field>
       </div>
@@ -382,27 +480,36 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
     pricing: (
       <div className="grid md:grid-cols-2 gap-5">
         <Field label="Moneda">
-          <Select options={["COP", "USD", "EUR"]} value={form.pricing.currency} onChange={(v) => patchPricing({ currency: v })} />
+          <Select options={CURRENCY_OPTIONS} value={form.pricing.currency} onChange={(v) => patchPricing({ currency: v })} />
         </Field>
-        <Field label="Precio de venta" required={form.operation_type !== "rent"} error={!hasPrice ? "Ingresa precio de venta o de arriendo" : ""}>
+        <Field
+          label="Precio de venta"
+          required={form.operation_type === "sale" || form.operation_type === "sale_rent"}
+          error={errors["pricing.sale_price"]}
+        >
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm">$</span>
             <Input type="number" value={numStr(form.pricing.sale_price)} onChange={(v) => patchPricing({ sale_price: numeric(v) })} className="pl-7" placeholder="850000000" />
           </div>
         </Field>
-        <Field label="Precio de arriendo / mes">
+        <Field
+          label="Precio de arriendo / mes"
+          required={form.operation_type === "rent" || form.operation_type === "sale_rent"}
+          error={errors["pricing.rent_price"]}
+          warning={warnings["pricing.rent_price"]}
+        >
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm">$</span>
             <Input type="number" value={numStr(form.pricing.rent_price)} onChange={(v) => patchPricing({ rent_price: numeric(v) })} className="pl-7" placeholder="5500000" />
           </div>
         </Field>
-        <Field label="Cuota de administración / mes">
+        <Field label="Cuota de administración / mes" error={errors["pricing.admin_fee"]} warning={warnings["pricing.admin_fee"]}>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm">$</span>
             <Input type="number" value={numStr(form.pricing.admin_fee)} onChange={(v) => patchPricing({ admin_fee: numeric(v) })} className="pl-7" placeholder="450000" />
           </div>
         </Field>
-        <Field label="Impuestos anuales (predial)">
+        <Field label="Impuestos anuales (predial)" error={errors["pricing.taxes"]}>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-sm">$</span>
             <Input type="number" value={numStr(form.pricing.taxes)} onChange={(v) => patchPricing({ taxes: numeric(v) })} className="pl-7" placeholder="1200000" />
@@ -411,61 +518,86 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
         <Field label="Texto de precio visible" hint="Ej. Precio a convenir">
           <Input value={form.pricing.display_price_text} onChange={(v) => patchPricing({ display_price_text: v })} placeholder="Precio a convenir" />
         </Field>
+        {priceM2 > 0 && (
+          <div className="md:col-span-2 bg-[#F0EDE6] border-l-2 border-[#0B1F3A] p-3">
+            <p className="text-[#1F2937] text-xs">
+              <strong>Precio por m²:</strong> {formatMoney(priceM2, form.pricing.currency)} / m²
+              {" "}(calculado sobre {form.areas.built_area_m2 > 0 ? "el área construida" : "el área de lote/terreno"})
+            </p>
+          </div>
+        )}
       </div>
     ),
 
     areas: (
       <div className="grid md:grid-cols-2 gap-5">
-        <Field label="Área construida (m²)" required>
+        <Field
+          label="Área construida (m²)"
+          required={form.property_type !== "lot"}
+          error={errors["areas.built_area_m2"]}
+          warning={warnings["areas.built_area_m2"]}
+        >
           <div className="relative">
             <Input type="number" value={numStr(form.areas.built_area_m2)} onChange={(v) => patchAreas({ built_area_m2: numeric(v) })} placeholder="180" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-xs">m²</span>
           </div>
         </Field>
-        <Field label="Área privada (m²)">
+        <Field label="Área privada (m²)" error={errors["areas.private_area_m2"]}>
           <div className="relative">
             <Input type="number" value={numStr(form.areas.private_area_m2)} onChange={(v) => patchAreas({ private_area_m2: numeric(v) })} placeholder="165" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-xs">m²</span>
           </div>
         </Field>
-        <Field label="Área de lote (m²)">
+        <Field label="Área de lote (m²)" required={form.property_type === "lot"} error={errors["areas.lot_area_m2"]}>
           <div className="relative">
             <Input type="number" value={numStr(form.areas.lot_area_m2)} onChange={(v) => patchAreas({ lot_area_m2: numeric(v) })} placeholder="200" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-xs">m²</span>
           </div>
+          {suggestedLotArea > 0 && form.areas.lot_area_m2 !== suggestedLotArea && (
+            <button
+              type="button"
+              onClick={() => patchAreas({ lot_area_m2: suggestedLotArea })}
+              className="text-[#0B1F3A] text-xs mt-1 underline hover:text-[#C9A84C]"
+            >
+              Usar frente × fondo = {suggestedLotArea.toLocaleString("es-CO")} m²
+            </button>
+          )}
         </Field>
-        <Field label="Área total terreno (m²)">
+        <Field label="Área total terreno (m²)" error={errors["areas.land_area_m2"]}>
           <div className="relative">
             <Input type="number" value={numStr(form.areas.land_area_m2)} onChange={(v) => patchAreas({ land_area_m2: numeric(v) })} placeholder="200" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] text-xs">m²</span>
           </div>
         </Field>
-        <Field label="Frente (m)">
+        <Field label="Frente (m)" error={errors["areas.front_m"]}>
           <Input type="number" value={numStr(form.areas.front_m)} onChange={(v) => patchAreas({ front_m: numeric(v) })} placeholder="12" />
         </Field>
-        <Field label="Fondo (m)">
+        <Field label="Fondo (m)" error={errors["areas.back_m"]}>
           <Input type="number" value={numStr(form.areas.back_m)} onChange={(v) => patchAreas({ back_m: numeric(v) })} placeholder="16" />
         </Field>
 
         <div className="md:col-span-2 border-t border-[#E8E4DB] pt-5 mt-1">
           <p className="text-[#0B1F3A] text-xs font-semibold uppercase tracking-wide mb-4">Distribución</p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <Field label="Habitaciones">
+            <Field label="Ambientes" hint="Número total de ambientes del inmueble" error={errors["layout.rooms"]}>
+              <Input type="number" value={numStr(form.layout.rooms)} onChange={(v) => patchLayout({ rooms: numeric(v) })} placeholder="0" />
+            </Field>
+            <Field label="Habitaciones" error={errors["layout.bedrooms"]}>
               <Input type="number" value={numStr(form.layout.bedrooms)} onChange={(v) => patchLayout({ bedrooms: numeric(v) })} placeholder="0" />
             </Field>
-            <Field label="Baños completos">
+            <Field label="Baños completos" error={errors["layout.bathrooms"]}>
               <Input type="number" value={numStr(form.layout.bathrooms)} onChange={(v) => patchLayout({ bathrooms: numeric(v) })} placeholder="0" />
             </Field>
-            <Field label="Medios baños">
+            <Field label="Medios baños" error={errors["layout.half_bathrooms"]}>
               <Input type="number" value={numStr(form.layout.half_bathrooms)} onChange={(v) => patchLayout({ half_bathrooms: numeric(v) })} placeholder="0" />
             </Field>
-            <Field label="Parqueaderos">
+            <Field label="Parqueaderos" error={errors["layout.parking_spaces"]}>
               <Input type="number" value={numStr(form.layout.parking_spaces)} onChange={(v) => patchLayout({ parking_spaces: numeric(v) })} placeholder="0" />
             </Field>
-            <Field label="Pisos del inmueble">
+            <Field label="Pisos del inmueble" error={errors["layout.floors"]}>
               <Input type="number" value={numStr(form.layout.floors)} onChange={(v) => patchLayout({ floors: numeric(v) })} placeholder="0" />
             </Field>
-            <Field label="Piso de la unidad">
+            <Field label="Piso de la unidad" error={errors["layout.unit_floor"]}>
               <Input type="number" value={numStr(form.layout.unit_floor)} onChange={(v) => patchLayout({ unit_floor: numeric(v) })} placeholder="0" />
             </Field>
           </div>
@@ -476,11 +608,32 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
     features: (
       <div className="space-y-7">
         <div className="grid md:grid-cols-2 gap-5">
-          <Field label="Año de construcción">
-            <Input type="number" value={numStr(form.structure.year_built)} onChange={(v) => patchStructure({ year_built: numeric(v) })} placeholder="2019" />
+          <Field label="Año de construcción" error={errors["structure.year_built"]}>
+            <Input
+              type="number"
+              value={numStr(form.structure.year_built)}
+              onChange={(v) => {
+                const y = numeric(v);
+                patchStructure({ year_built: y, age_years: ageFromYearBuilt(y) });
+              }}
+              placeholder="2019"
+            />
           </Field>
-          <Field label="Antigüedad (años)">
-            <Input type="number" value={numStr(form.structure.age_years)} onChange={(v) => patchStructure({ age_years: numeric(v) })} placeholder="6" />
+          <Field
+            label="Antigüedad (años)"
+            hint={form.structure.year_built > 0 ? "Calculada automáticamente desde el año de construcción" : undefined}
+            error={errors["structure.age_years"]}
+          >
+            <Input
+              type="number"
+              value={numStr(form.structure.age_years)}
+              onChange={form.structure.year_built > 0 ? undefined : (v) => patchStructure({ age_years: numeric(v) })}
+              className={form.structure.year_built > 0 ? "bg-[#F8F7F4] text-[#6B7280] cursor-not-allowed" : ""}
+              placeholder="6"
+            />
+          </Field>
+          <Field label="Niveles construidos" error={errors["structure.built_levels"]}>
+            <Input type="number" value={numStr(form.structure.built_levels)} onChange={(v) => patchStructure({ built_levels: numeric(v) })} placeholder="6" />
           </Field>
           <Field label="Calidad de construcción">
             <Select
@@ -514,6 +667,35 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
               placeholder="Seleccionar..."
             />
           </Field>
+          <Field label="Tipo de piso">
+            <Select
+              options={FLOOR_TYPES}
+              value={form.structure.floor_type}
+              onChange={(v) => patchStructure({ floor_type: v })}
+              placeholder="Seleccionar..."
+            />
+          </Field>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-3">
+          <label className="flex items-center gap-3 border border-[#E8E4DB] px-4 py-3 cursor-pointer hover:border-[#0B1F3A] transition-colors">
+            <input
+              type="checkbox"
+              className="accent-[#0B1F3A]"
+              checked={form.features.has_pool}
+              onChange={(e) => patchFeatures({ has_pool: e.target.checked })}
+            />
+            <span className="text-[#1F2937] text-sm">Alberca / Piscina</span>
+          </label>
+          <label className="flex items-center gap-3 border border-[#E8E4DB] px-4 py-3 cursor-pointer hover:border-[#0B1F3A] transition-colors">
+            <input
+              type="checkbox"
+              className="accent-[#0B1F3A]"
+              checked={form.features.pets_allowed}
+              onChange={(e) => patchFeatures({ pets_allowed: e.target.checked })}
+            />
+            <span className="text-[#1F2937] text-sm">Acepta mascotas</span>
+          </label>
         </div>
 
         <div>
@@ -546,6 +728,17 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
             options={AMENITIES}
             selected={form.features.commercial}
             onToggle={toggleFeature("commercial")}
+          />
+        </div>
+
+        <div>
+          <p className="text-[#0B1F3A] text-xs font-semibold uppercase tracking-wide mb-3">
+            Datos generales (tags)
+          </p>
+          <ChipGroup
+            options={GENERAL_TAGS}
+            selected={form.features.tags}
+            onToggle={toggleFeature("tags")}
           />
         </div>
       </div>
@@ -792,6 +985,11 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {!isValid && (
+            <span className="text-red-500 text-xs font-medium">
+              {errorCount} {errorCount === 1 ? "error por corregir" : "errores por corregir"}
+            </span>
+          )}
           <button
             onClick={() => setPreviewMode(true)}
             className="flex items-center gap-1.5 border border-[#E8E4DB] text-[#6B7280] px-3 py-2 text-sm hover:border-[#0B1F3A] hover:text-[#0B1F3A] transition-colors"
@@ -846,6 +1044,14 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
                 {tab.num}
               </span>
               {tab.label}
+              {errorsByTab[tab.id] > 0 && (
+                <span
+                  className="min-w-4 h-4 px-1 flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full"
+                  title={`${errorsByTab[tab.id]} error(es) en esta pestaña`}
+                >
+                  {errorsByTab[tab.id]}
+                </span>
+              )}
             </button>
           ))}
         </div>

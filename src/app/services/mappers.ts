@@ -2,19 +2,40 @@
 // Convención acordada (ver ai-notes.md del backend):
 //   publication_status: published | draft | archived
 //   operation_type:     sale | rent | sale_rent | exchange
-//   property_type:      apartment | house | penthouse | farm | commercial | office | lot | warehouse
+//   property_type:      house | apartment | apartment_building | suite | studio_apartment |
+//                       lot | recreational_farm | medical_office | building | production_farm |
+//                       hotel | commercial_space | office | warehouse
+//   classification:     residential | commercial | industrial |
+//                       mixed_residential_commercial | mixed_commercial_industrial
+//   currency:           COP | USD
 import type { ApiListing } from "./types";
 
 export const PROPERTY_TYPE_LABELS: Record<string, string> = {
-  apartment: "Apartamento",
   house: "Casa",
-  penthouse: "Penthouse",
-  farm: "Finca",
-  commercial: "Local",
+  apartment: "Departamento",
+  apartment_building: "Edificio de Apartamentos",
+  suite: "Suite",
+  studio_apartment: "Apartaestudio",
+  lot: "Lote/Terreno",
+  recreational_farm: "Finca de Recreación",
+  medical_office: "Consultorio",
+  building: "Edificio",
+  production_farm: "Finca de Producción",
+  hotel: "Hotel",
+  commercial_space: "Local Comercial",
   office: "Oficina",
-  lot: "Lote",
   warehouse: "Bodega",
 };
+
+export const CLASSIFICATION_LABELS: Record<string, string> = {
+  residential: "Habitacional",
+  commercial: "Comercial",
+  industrial: "Industrial",
+  mixed_residential_commercial: "Mixto Habitacional Comercial",
+  mixed_commercial_industrial: "Mixto Comercial Industrial",
+};
+
+export const CURRENCY_OPTIONS = ["COP", "USD"];
 
 export const OPERATION_TYPE_LABELS: Record<string, string> = {
   sale: "Venta",
@@ -56,6 +77,7 @@ export function formatMoney(value: number, currency: string): string {
 /** Fila que consume ListingsTable. */
 export interface ListingRow {
   id: string;
+  externalId: string;
   title: string;
   location: string;
   price: string;
@@ -76,6 +98,7 @@ const PLACEHOLDER_IMG =
 export function toListingRow(listing: ApiListing): ListingRow {
   return {
     id: listing.listing_id,
+    externalId: listing.external_id ?? "",
     title: listing.title,
     location: listing.location?.city ?? "",
     price: displayPrice(listing),

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   PROPERTY_TYPE_LABELS,
+  CLASSIFICATION_LABELS,
   OPERATION_TYPE_LABELS,
+  CURRENCY_OPTIONS,
   codeFor,
   labelFor,
   displayPrice,
@@ -9,7 +11,7 @@ import {
   toPublicCard,
   publishedFirst,
 } from "../mappers";
-import { emptyListing } from "../types";
+import { emptyListing, normalizeListing } from "../types";
 import type { ApiListing } from "../types";
 
 function sampleListing(overrides: Partial<ApiListing> = {}): ApiListing {
@@ -34,8 +36,25 @@ function sampleListing(overrides: Partial<ApiListing> = {}): ApiListing {
 
 describe("diccionarios código ↔ etiqueta", () => {
   it("traduce códigos canónicos a etiquetas en español", () => {
-    expect(labelFor(PROPERTY_TYPE_LABELS, "apartment")).toBe("Apartamento");
+    expect(labelFor(PROPERTY_TYPE_LABELS, "apartment")).toBe("Departamento");
+    expect(labelFor(PROPERTY_TYPE_LABELS, "apartment_building")).toBe("Edificio de Apartamentos");
+    expect(labelFor(PROPERTY_TYPE_LABELS, "medical_office")).toBe("Consultorio");
     expect(labelFor(OPERATION_TYPE_LABELS, "rent")).toBe("Arriendo");
+  });
+
+  it("cubre los 14 tipos de inmueble acordados con el backend", () => {
+    expect(Object.keys(PROPERTY_TYPE_LABELS)).toHaveLength(14);
+  });
+
+  it("traduce las clasificaciones del inmueble", () => {
+    expect(labelFor(CLASSIFICATION_LABELS, "residential")).toBe("Habitacional");
+    expect(labelFor(CLASSIFICATION_LABELS, "mixed_residential_commercial")).toBe(
+      "Mixto Habitacional Comercial",
+    );
+  });
+
+  it("solo permite las monedas COP y USD", () => {
+    expect(CURRENCY_OPTIONS).toEqual(["COP", "USD"]);
   });
 
   it("devuelve el código tal cual si no está en el diccionario", () => {
@@ -73,7 +92,7 @@ describe("toListingRow", () => {
       id: "l-1",
       title: "Apartamento El Poblado",
       location: "Medellín",
-      type: "Apartamento",
+      type: "Departamento",
       operation: "Venta",
       status: "Publicado",
       featured: true,
@@ -97,6 +116,27 @@ describe("toPublicCard", () => {
     const card = toPublicCard(sampleListing());
     expect(card.location).toBe("El Poblado, Medellín");
     expect(card.baths).toBe(3);
+  });
+});
+
+describe("normalizeListing", () => {
+  it("rellena los campos nuevos que registros antiguos no traen", () => {
+    // Simula un listing guardado antes de agregar tags/has_pool/rooms/floor_type.
+    const legacy = sampleListing();
+    (legacy.features as unknown as Record<string, unknown>).tags = null;
+    delete (legacy.features as unknown as Record<string, unknown>).has_pool;
+    delete (legacy.layout as unknown as Record<string, unknown>).rooms;
+    delete (legacy as unknown as Record<string, unknown>).external_id;
+
+    const normalized = normalizeListing(legacy);
+
+    expect(normalized.features.tags).toEqual([]);
+    expect(normalized.features.has_pool).toBe(false);
+    expect(normalized.layout.rooms).toBe(0);
+    expect(normalized.external_id).toBe("");
+    // No pisa los datos existentes.
+    expect(normalized.title).toBe("Apartamento El Poblado");
+    expect(normalized.layout.bedrooms).toBe(3);
   });
 });
 

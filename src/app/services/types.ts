@@ -35,6 +35,7 @@ export interface ApiAreas {
 }
 
 export interface ApiLayout {
+  rooms: number;
   bedrooms: number;
   bathrooms: number;
   half_bathrooms: number;
@@ -50,6 +51,7 @@ export interface ApiStructure {
   conservation_status: string;
   terrain_type: string;
   structure_type: string;
+  floor_type: string;
   built_levels: number;
 }
 
@@ -58,6 +60,9 @@ export interface ApiFeatures {
   outdoor: string[];
   commercial: string[];
   project: string[];
+  tags: string[];
+  has_pool: boolean;
+  pets_allowed: boolean;
 }
 
 export interface ApiMedia {
@@ -87,15 +92,27 @@ export interface ApiListingMetadata {
 
 export type PublicationStatus = "published" | "draft" | "archived";
 export type OperationType = "sale" | "rent" | "sale_rent" | "exchange";
+export type Classification =
+  | "residential"
+  | "commercial"
+  | "industrial"
+  | "mixed_residential_commercial"
+  | "mixed_commercial_industrial";
 
 export interface ApiListing {
   listing_id: string;
+  /** ID usado por el sistema externo de origen (ej. Century 21). */
+  external_id: string;
   slug: string;
   url: string;
   language: string;
   title: string;
+  description_short: string;
+  /** Opcional: si se omite, el backend la iguala a description_short. */
+  description_long: string;
   property_type: string;
   subtype: string;
+  classification: string;
   operation_type: string;
   publication_status: string;
   featured: boolean;
@@ -110,12 +127,26 @@ export interface ApiListing {
   metadata: ApiListingMetadata;
 }
 
+/** Cifras que se muestran en la barra de estadísticas del sitio público. */
+export interface ApiUserStats {
+  sold?: string;
+  experience?: string;
+  satisfied?: string;
+  ranking?: string;
+}
+
 export interface ApiUserMetadata {
-  stats?: unknown;
+  stats?: ApiUserStats;
   badges?: unknown;
   services?: unknown;
   hero_image_url?: string;
   hero_video_url?: string;
+  /** Párrafo descriptivo del hero del sitio público. */
+  presentation?: string;
+  /** Segundo párrafo de la sección "nosotros" (el primero es user.bio). */
+  about_extra?: string;
+  /** Banda de premios sobre la foto (ej. "Agente destacada 2022 · 2023"). */
+  award_text?: string;
 }
 
 export interface ApiUser {
@@ -163,16 +194,58 @@ export interface ApiErrorBody {
   status: number;
 }
 
+/**
+ * Rellena con valores por defecto los campos que registros antiguos del
+ * backend no traen (ej. features.tags llega como null en listings creados
+ * antes de que existiera el campo). Úsalo antes de editar un listing.
+ */
+export function normalizeListing(listing: ApiListing): ApiListing {
+  const base = emptyListing();
+  return {
+    ...base,
+    ...listing,
+    location: {
+      ...base.location,
+      ...listing.location,
+      coordinates: { ...base.location.coordinates, ...listing.location?.coordinates },
+    },
+    pricing: { ...base.pricing, ...listing.pricing },
+    areas: { ...base.areas, ...listing.areas },
+    layout: { ...base.layout, ...listing.layout },
+    structure: { ...base.structure, ...listing.structure },
+    features: {
+      ...base.features,
+      ...listing.features,
+      indoor: listing.features?.indoor ?? [],
+      outdoor: listing.features?.outdoor ?? [],
+      commercial: listing.features?.commercial ?? [],
+      project: listing.features?.project ?? [],
+      tags: listing.features?.tags ?? [],
+    },
+    media: { ...base.media, ...listing.media, photos: listing.media?.photos ?? [] },
+    commercial: { ...base.commercial, ...listing.commercial },
+    metadata: {
+      ...base.metadata,
+      ...listing.metadata,
+      breadcrumbs: listing.metadata?.breadcrumbs ?? [],
+    },
+  };
+}
+
 /** Plantilla de un listing vacío con todos los objetos anidados inicializados. */
 export function emptyListing(): ApiListing {
   return {
     listing_id: "",
+    external_id: "",
     slug: "",
     url: "",
     language: "es",
     title: "",
+    description_short: "",
+    description_long: "",
     property_type: "",
     subtype: "",
+    classification: "",
     operation_type: "",
     publication_status: "draft",
     featured: false,
@@ -202,6 +275,7 @@ export function emptyListing(): ApiListing {
       back_m: 0,
     },
     layout: {
+      rooms: 0,
       bedrooms: 0,
       bathrooms: 0,
       half_bathrooms: 0,
@@ -216,9 +290,18 @@ export function emptyListing(): ApiListing {
       conservation_status: "",
       terrain_type: "",
       structure_type: "",
+      floor_type: "",
       built_levels: 0,
     },
-    features: { indoor: [], outdoor: [], commercial: [], project: [] },
+    features: {
+      indoor: [],
+      outdoor: [],
+      commercial: [],
+      project: [],
+      tags: [],
+      has_pool: false,
+      pets_allowed: false,
+    },
     media: {
       photos: [],
       photo_count: 0,
