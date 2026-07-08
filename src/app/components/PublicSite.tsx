@@ -7,6 +7,9 @@ import {
 } from "lucide-react";
 import { listingsApi } from "../services/api";
 import { publishedFirst, toPublicCard } from "../services/mappers";
+import { whatsappHref } from "../services/profile";
+import { useAgentProfile } from "../hooks/useAgentProfile";
+import { AgentAvatar } from "./AgentAvatar";
 
 interface PublicSiteProps {
   onNavigateToDashboard: () => void;
@@ -47,6 +50,40 @@ function StatusBadge({ label }: { label: string }) {
 export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
   const { t } = useTranslation();
   const [remoteListings, setRemoteListings] = useState<ListingCardData[] | null>(null);
+
+  // Perfil real del agente (VITE_PROFILE_USER_ID). Los datos personales sin
+  // valor no se muestran: no hay información mockeada de perfil.
+  const profile = useAgentProfile();
+  const agentName = profile.name;
+  const agentOffice = profile.officeName || "Century 21 Colombia";
+  const agentHeadline = profile.headline || t("public.hero.subtitle");
+  const agentEmail = profile.email;
+  const agentPhone = profile.phone;
+  const agentAddress = profile.officeAddress;
+  // Imagen de fondo genérica del hero (no es foto de perfil); se reemplaza
+  // configurando metadata.hero_image_url en el perfil.
+  const heroPoster =
+    profile.heroImageUrl ||
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1600&h=900&fit=crop&auto=format";
+  const waLink = whatsappHref(profile);
+  const telLink = agentPhone ? `tel:${agentPhone.replace(/[^\d+]/g, "")}` : "";
+  const STATS = [
+    { n: profile.stats.sold, label: t("public.stats.sold") },
+    { n: profile.stats.experience, label: t("public.stats.experience") },
+    { n: profile.stats.satisfied, label: t("public.stats.satisfied") },
+    { n: profile.stats.ranking, label: t("public.stats.topAgent") },
+  ].filter(({ n }) => n);
+  const SOCIALS = [
+    { Icon: Instagram, href: profile.instagramUrl },
+    { Icon: Linkedin, href: profile.linkedinUrl },
+    { Icon: Facebook, href: profile.facebookUrl },
+  ].filter(({ href }) => href);
+  const CONTACT_ROWS = [
+    { icon: Phone, label: t("public.contact.phone"), val: agentPhone },
+    { icon: MessageCircle, label: t("public.contact.whatsapp"), val: agentPhone },
+    { icon: Mail, label: t("public.contact.email"), val: agentEmail },
+    { icon: MapPin, label: t("public.contact.office"), val: agentAddress },
+  ].filter(({ val }) => val);
 
   // Carga los inmuebles publicados desde el backend. Si el API no está
   // disponible se mantienen las tarjetas estáticas de demostración.
@@ -182,9 +219,9 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
             </div>
             <div>
               <span className="text-white font-semibold text-sm tracking-wide" style={{ fontFamily: "'Playfair Display', serif" }}>
-                Aura Urrea
+                {agentName || agentOffice}
               </span>
-              <span className="text-[#C9A84C] text-xs block leading-none">Century 21 Colombia</span>
+              <span className="text-[#C9A84C] text-xs block leading-none">{agentName ? agentOffice : ""}</span>
             </div>
           </div>
 
@@ -249,7 +286,7 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
           muted
           loop
           playsInline
-          poster="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1600&h=900&fit=crop&auto=format"
+          poster={heroPoster}
         >
           <source src="" type="video/mp4" />
         </video>
@@ -274,32 +311,36 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
                 fontWeight: 600,
               }}
             >
-              Aura Urrea
+              {agentName || agentOffice}
             </h1>
             <p className="text-white/70 text-lg mb-2">
-              {t('public.hero.subtitle')}
+              {agentHeadline}
             </p>
             <p className="text-white/50 text-sm mb-10 max-w-lg">
-              {t('public.hero.description')}
+              {profile.presentation || t('public.hero.description')}
             </p>
 
             <div className="flex flex-wrap gap-3">
-              <a
-                href="https://wa.me/573001234567"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 bg-[#25D366] text-white px-5 py-3 text-sm font-semibold hover:bg-[#1da855] transition-colors"
-              >
-                <MessageCircle size={16} />
-                {t('public.hero.whatsapp')}
-              </a>
-              <a
-                href="tel:+573001234567"
-                className="flex items-center gap-2 bg-[#C9A84C] text-[#0B1F3A] px-5 py-3 text-sm font-semibold hover:bg-[#e8c97a] transition-colors"
-              >
-                <Phone size={16} />
-                {t('public.hero.call')}
-              </a>
+              {waLink && (
+                <a
+                  href={waLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-[#25D366] text-white px-5 py-3 text-sm font-semibold hover:bg-[#1da855] transition-colors"
+                >
+                  <MessageCircle size={16} />
+                  {t('public.hero.whatsapp')}
+                </a>
+              )}
+              {telLink && (
+                <a
+                  href={telLink}
+                  className="flex items-center gap-2 bg-[#C9A84C] text-[#0B1F3A] px-5 py-3 text-sm font-semibold hover:bg-[#e8c97a] transition-colors"
+                >
+                  <Phone size={16} />
+                  {t('public.hero.call')}
+                </a>
+              )}
               <button
                 onClick={() => scrollTo("contact")}
                 className="flex items-center gap-2 border border-white/40 text-white px-5 py-3 text-sm font-semibold hover:border-[#C9A84C] hover:text-[#C9A84C] transition-colors"
@@ -322,47 +363,54 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
       </section>
 
       {/* ── STATS BAR ───────────────────────────────────── */}
-      <section className="bg-[#0B1F3A] py-6">
-        <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-6 divide-x divide-white/10">
-          {[
-            { n: "+200", label: t('public.stats.sold') },
-            { n: "12", label: t('public.stats.experience') },
-            { n: "98%", label: t('public.stats.satisfied') },
-            { n: "#1", label: t('public.stats.topAgent') },
-          ].map(({ n, label }) => (
-            <div key={label} className="pl-6 first:pl-0">
-              <p
-                className="text-[#C9A84C] mb-0.5"
-                style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.75rem", fontWeight: 600 }}
-              >
-                {n}
-              </p>
-              <p className="text-white/50 text-xs">{label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      {STATS.length > 0 && (
+        <section className="bg-[#0B1F3A] py-6">
+          <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-6 divide-x divide-white/10">
+            {STATS.map(({ n, label }) => (
+              <div key={label} className="pl-6 first:pl-0">
+                <p
+                  className="text-[#C9A84C] mb-0.5"
+                  style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.75rem", fontWeight: 600 }}
+                >
+                  {n}
+                </p>
+                <p className="text-white/50 text-xs">{label}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── ABOUT ───────────────────────────────────────── */}
       <section id="about" className="py-24 max-w-7xl mx-auto px-6">
         <div className="grid md:grid-cols-2 gap-16 items-center">
           <div className="relative">
             <div className="absolute -top-4 -left-4 w-full h-full border border-[#C9A84C]/30" />
-            <img
-              src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=700&h=860&fit=crop&auto=format"
-              alt="Aura Urrea, Agente Century 21"
-              className="relative w-full object-cover"
-              style={{ aspectRatio: "3/4" }}
-            />
-            <div
-              className="absolute bottom-0 left-0 right-0 p-6"
-              style={{ background: "linear-gradient(to top, rgba(11,31,58,0.95), transparent)" }}
-            >
-              <div className="flex items-center gap-2">
-                <Award size={16} className="text-[#C9A84C]" />
-                <span className="text-white/90 text-sm">Agente destacada 2022 · 2023 · 2024</span>
+            {profile.avatarUrl ? (
+              <img
+                src={profile.avatarUrl}
+                alt={`${agentName}, Agente ${agentOffice}`}
+                className="relative w-full object-cover"
+                style={{ aspectRatio: "3/4" }}
+              />
+            ) : (
+              <AgentAvatar
+                name={agentName}
+                className="relative w-full aspect-[3/4]"
+                textClass="text-7xl"
+              />
+            )}
+            {profile.awardText && (
+              <div
+                className="absolute bottom-0 left-0 right-0 p-6"
+                style={{ background: "linear-gradient(to top, rgba(11,31,58,0.95), transparent)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <Award size={16} className="text-[#C9A84C]" />
+                  <span className="text-white/90 text-sm">{profile.awardText}</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div>
@@ -380,10 +428,10 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
               {t('public.about.heroTitle')}
             </h2>
             <p className="text-[#6B7280] mb-4 leading-relaxed">
-              {t('public.about.desc1')}
+              {profile.bio || t('public.about.desc1')}
             </p>
             <p className="text-[#6B7280] mb-8 leading-relaxed">
-              {t('public.about.desc2')}
+              {profile.aboutExtra || t('public.about.desc2')}
             </p>
 
             <div className="grid grid-cols-2 gap-4 mb-8">
@@ -401,23 +449,25 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
             </div>
 
             <div className="flex items-center gap-3 p-4 bg-[#F0EDE6] border-l-2 border-[#C9A84C]">
-              <img
-                src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=60&h=60&fit=crop&auto=format"
-                alt="Aura Urrea"
-                className="w-12 h-12 object-cover rounded-full"
+              <AgentAvatar
+                src={profile.avatarUrl}
+                name={agentName}
+                className="w-12 h-12 rounded-full shrink-0"
               />
               <div>
-                <p className="text-[#0B1F3A] text-sm font-semibold">Aura Urrea</p>
-                <p className="text-[#6B7280] text-xs">Agente Inmobiliaria · Century 21 Colombia</p>
+                <p className="text-[#0B1F3A] text-sm font-semibold">{agentName || agentOffice}</p>
+                <p className="text-[#6B7280] text-xs">{agentHeadline}</p>
               </div>
-              <a
-                href="https://wa.me/573001234567"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-auto bg-[#0B1F3A] text-[#F8F7F4] text-xs px-4 py-2 hover:bg-[#C9A84C] hover:text-[#0B1F3A] transition-colors"
-              >
-                {t('public.about.write')}
-              </a>
+              {waLink && (
+                <a
+                  href={waLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto bg-[#0B1F3A] text-[#F8F7F4] text-xs px-4 py-2 hover:bg-[#C9A84C] hover:text-[#0B1F3A] transition-colors"
+                >
+                  {t('public.about.write')}
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -556,12 +606,7 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
             </p>
 
             <div className="space-y-5">
-              {[
-                { icon: Phone, label: t('public.contact.phone'), val: "+57 300 123 4567" },
-                { icon: MessageCircle, label: t('public.contact.whatsapp'), val: "+57 300 123 4567" },
-                { icon: Mail, label: t('public.contact.email'), val: "aura.urrea@century21.com.co" },
-                { icon: MapPin, label: t('public.contact.office'), val: "Calle 70 #10-56, Bogotá D.C." },
-              ].map(({ icon: Icon, label, val }) => (
+              {CONTACT_ROWS.map(({ icon: Icon, label, val }) => (
                 <div key={label} className="flex items-center gap-4">
                   <div className="w-8 h-8 border border-[#C9A84C]/40 flex items-center justify-center shrink-0">
                     <Icon size={14} className="text-[#C9A84C]" />
@@ -643,13 +688,12 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
                   <span className="text-[#0B1F3A] font-black text-xs tracking-tighter">C21</span>
                 </div>
                 <div>
-                  <p className="text-white font-semibold text-sm" style={{ fontFamily: "'Playfair Display', serif" }}>Aura Urrea</p>
-                  <p className="text-[#C9A84C] text-xs">Century 21 Colombia</p>
+                  <p className="text-white font-semibold text-sm" style={{ fontFamily: "'Playfair Display', serif" }}>{agentName || agentOffice}</p>
+                  <p className="text-[#C9A84C] text-xs">{agentName ? agentOffice : ""}</p>
                 </div>
               </div>
               <p className="text-white/40 text-xs leading-relaxed max-w-xs">
-                Consultora inmobiliaria de lujo con más de 12 años de experiencia
-                en el mercado colombiano.
+                {profile.presentation || t('public.hero.description')}
               </p>
             </div>
 
@@ -674,42 +718,48 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
             <div>
               <p className="text-white/60 text-xs font-semibold tracking-widest uppercase mb-4">{t('public.footer.contact')}</p>
               <div className="space-y-2">
-                <p className="text-white/50 text-sm">+57 300 123 4567</p>
-                <p className="text-white/50 text-sm">aura.urrea@century21.com.co</p>
-                <p className="text-white/50 text-sm">Bogotá, Colombia</p>
+                {agentPhone && <p className="text-white/50 text-sm">{agentPhone}</p>}
+                {agentEmail && <p className="text-white/50 text-sm">{agentEmail}</p>}
+                {agentAddress && <p className="text-white/50 text-sm">{agentAddress}</p>}
               </div>
-              <div className="flex gap-3 mt-5">
-                {[Instagram, Linkedin, Facebook].map((Icon, i) => (
-                  <a
-                    key={i}
-                    href="#"
-                    className="w-8 h-8 border border-white/15 flex items-center justify-center text-white/40 hover:border-[#C9A84C] hover:text-[#C9A84C] transition-colors"
-                  >
-                    <Icon size={14} />
-                  </a>
-                ))}
-              </div>
+              {SOCIALS.length > 0 && (
+                <div className="flex gap-3 mt-5">
+                  {SOCIALS.map(({ Icon, href }, i) => (
+                    <a
+                      key={i}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-8 h-8 border border-white/15 flex items-center justify-center text-white/40 hover:border-[#C9A84C] hover:text-[#C9A84C] transition-colors"
+                    >
+                      <Icon size={14} />
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
           <div className="border-t border-white/5 pt-6 flex flex-col md:flex-row justify-between items-center gap-3 text-white/30 text-xs">
-            <p>{t('public.footer.rights')}</p>
+            <p>{t('public.footer.rights', { year: new Date().getFullYear(), name: [agentName, agentOffice].filter(Boolean).join(" · ") })}</p>
             <p>{t('public.footer.license')}</p>
           </div>
         </div>
       </footer>
 
       {/* ── FLOATING WHATSAPP ────────────────────────────── */}
-      <a
-        href="https://wa.me/573001234567"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-[#25D366] flex items-center justify-center shadow-lg hover:bg-[#1da855] transition-colors"
-        style={{ borderRadius: "50%" }}
-        title="Escribir por WhatsApp"
-      >
-        <MessageCircle size={24} className="text-white" />
-      </a>
+      {waLink && (
+        <a
+          href={waLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-[#25D366] flex items-center justify-center shadow-lg hover:bg-[#1da855] transition-colors"
+          style={{ borderRadius: "50%" }}
+          title="Escribir por WhatsApp"
+        >
+          <MessageCircle size={24} className="text-white" />
+        </a>
+      )}
     </div>
   );
 }

@@ -1,16 +1,32 @@
+import { useMemo } from "react";
 import { Building2, Eye, FileEdit, Star, TrendingUp, TrendingDown, Clock, CheckCircle2, AlertCircle, Edit3, Archive } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useListings } from "../hooks/useListings";
+import { useAgentProfile } from "../hooks/useAgentProfile";
 import { displayPrice } from "../services/mappers";
 
 export function DashboardOverview() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { listings } = useListings();
+  const profile = useAgentProfile();
 
-  const published = listings.filter((l) => l.publication_status === "published").length;
-  const drafts = listings.filter((l) => l.publication_status === "draft").length;
-  const archived = listings.filter((l) => l.publication_status === "archived").length;
-  const featured = listings.filter((l) => l.featured).length;
+  const firstName = profile.name.trim().split(/\s+/)[0] ?? "";
+  const todayLabel = new Date().toLocaleDateString(
+    i18n.language?.startsWith("en") ? "en-US" : "es-CO",
+    { weekday: "long", day: "numeric", month: "long", year: "numeric" },
+  );
+
+  // KPIs en un solo recorrido, recalculados solo cuando cambian los listings.
+  const { published, drafts, archived, featured } = useMemo(() => {
+    const counts = { published: 0, drafts: 0, archived: 0, featured: 0 };
+    for (const l of listings) {
+      if (l.publication_status === "published") counts.published += 1;
+      else if (l.publication_status === "draft") counts.drafts += 1;
+      else if (l.publication_status === "archived") counts.archived += 1;
+      if (l.featured) counts.featured += 1;
+    }
+    return counts;
+  }, [listings]);
 
   const KPI_CARDS = [
     {
@@ -51,53 +67,31 @@ export function DashboardOverview() {
     },
   ];
 
-  const ACTIVITY = [
-    {
-      id: 1,
-      type: "published",
-      title: "Apartamento El Poblado — publicado",
-      sub: "Hace 2 horas · por Aura Urrea",
-      icon: CheckCircle2,
-      iconColor: "text-green-600",
-      dot: "bg-green-500",
-    },
-    {
-      id: 2,
-      type: "edit",
-      title: "Penthouse Cartagena — precio actualizado",
-      sub: "Hace 5 horas · $3.200.000.000 → $2.980.000.000",
-      icon: Edit3,
-      iconColor: "text-[#C9A84C]",
-      dot: "bg-[#C9A84C]",
-    },
-    {
-      id: 3,
-      type: "draft",
-      title: "Casa La Calera — guardado como borrador",
-      sub: "Ayer, 4:30 PM",
-      icon: FileEdit,
-      iconColor: "text-[#6B7280]",
-      dot: "bg-[#6B7280]",
-    },
-    {
-      id: 4,
-      type: "alert",
-      title: "Casa Rosales — fotos pendientes",
-      sub: "Faltan 3 fotos para publicar",
-      icon: AlertCircle,
-      iconColor: "text-amber-500",
-      dot: "bg-amber-400",
-    },
-    {
-      id: 5,
-      type: "archived",
-      title: "Oficina Chapinero — archivada",
-      sub: "Hace 2 días · vendida",
-      icon: Archive,
-      iconColor: "text-[#6B7280]",
-      dot: "bg-[#E8E4DB]",
-    },
-  ];
+  // Actividad real: últimos inmuebles modificados en el backend, con el ícono
+  // según su estado y una alerta si están publicados sin fotos.
+  const ACTIVITY = useMemo(() => {
+    const byStatus: Record<string, { icon: typeof CheckCircle2; iconColor: string; verb: string }> = {
+      published: { icon: CheckCircle2, iconColor: "text-green-600", verb: "publicado" },
+      draft: { icon: FileEdit, iconColor: "text-[#6B7280]", verb: "guardado como borrador" },
+      archived: { icon: Archive, iconColor: "text-[#6B7280]", verb: "archivado" },
+    };
+    return [...listings]
+      .sort((a, b) => (b.metadata?.updated_at ?? "").localeCompare(a.metadata?.updated_at ?? ""))
+      .slice(0, 5)
+      .map((l, i) => {
+        const missingPhotos = l.publication_status === "published" && !(l.media?.photos?.length > 0);
+        const cfg = missingPhotos
+          ? { icon: AlertCircle, iconColor: "text-amber-500", verb: "publicado sin fotos" }
+          : byStatus[l.publication_status] ?? { icon: Edit3, iconColor: "text-[#C9A84C]", verb: "actualizado" };
+        return {
+          id: i + 1,
+          title: `${l.title} — ${cfg.verb}`,
+          sub: `Actualizado ${l.metadata?.updated_at?.slice(0, 10) || "—"}`,
+          icon: cfg.icon,
+          iconColor: cfg.iconColor,
+        };
+      });
+  }, [listings]);
 
   const statusLabel = (code: string) => {
     if (code === "published") return t('dashboard.status.published');
@@ -106,7 +100,8 @@ export function DashboardOverview() {
     return code;
   };
 
-  const RECENT_LISTINGS = [...listings]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const RECENT_LISTINGS = useMemo(() => [...listings]
     .sort((a, b) => (b.metadata?.updated_at ?? "").localeCompare(a.metadata?.updated_at ?? ""))
     .slice(0, 4)
     .map((l) => ({
@@ -117,7 +112,7 @@ export function DashboardOverview() {
       img:
         l.media?.photos?.[0] ||
         "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=80&h=60&fit=crop&auto=format",
-    }));
+    })), [listings, t]);
 
   function statusStyle(s: string) {
     if (s === t('dashboard.status.published')) return "bg-green-100 text-green-800";
@@ -131,12 +126,12 @@ export function DashboardOverview() {
     <div style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* Header */}
       <div className="mb-8">
-        <p className="text-[#6B7280] text-xs mb-1">{t('dashboard.date')}</p>
+        <p className="text-[#6B7280] text-xs mb-1 first-letter:uppercase">{todayLabel}</p>
         <h1
           className="text-[#0B1F3A]"
           style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.75rem", fontWeight: 600 }}
         >
-          {t('dashboard.greeting')}
+          {t('dashboard.greeting', { name: firstName ? `, ${firstName}` : "" })}
         </h1>
         <p className="text-[#6B7280] text-sm mt-1">
           {t('dashboard.summary')}
@@ -212,6 +207,11 @@ export function DashboardOverview() {
             <h2 className="text-[#0B1F3A] text-sm font-semibold">{t('dashboard.activity')}</h2>
           </div>
           <div className="p-5 space-y-4">
+            {ACTIVITY.length === 0 && (
+              <p className="text-[#6B7280] text-xs text-center py-6">
+                Aún no hay actividad: crea tu primera propiedad para verla aquí.
+              </p>
+            )}
             {ACTIVITY.map((a) => {
               const Icon = a.icon;
               return (

@@ -29,7 +29,7 @@
     "about": {
       "title": "Sobre mí",
       "heroTitle": "Experiencia que transforma propiedades en hogares",
-      "desc1": "Soy Aura Urrea, consultora inmobiliaria certificada con más de 12 años de trayectoria en el mercado colombiano. Mi especialidad son las propiedades de alto valor en Bogotá, Medellín y la Costa Caribe.",
+      "desc1": "Consultoría inmobiliaria certificada con amplia trayectoria en el mercado colombiano, especializada en propiedades de alto valor.",
       "desc2": "Como parte de Century 21, la red inmobiliaria más grande del mundo, tengo acceso a recursos exclusivos, herramientas de valoración avanzadas y una red de compradores nacionales e internacionales.",
       "gold": "Agente Century 21 Gold",
       "certified": "Certificada CIJ Colombia",
@@ -86,14 +86,14 @@
     "footer": {
       "nav": "Navegación",
       "contact": "Contacto",
-      "rights": "© 2025 Aura Urrea · Century 21 Colombia. Todos los derechos reservados.",
+      "rights": "© {{year}} {{name}}. Todos los derechos reservados.",
       "license": "Matrícula profesional LONJA DE PROPIEDAD RAÍZ Nº 12.847"
     }
   },
   "login": {
     "back": "Volver al sitio",
     "private": "Acceso privado",
-    "welcome": "Bienvenida, Aura",
+    "welcome": "Bienvenida{{name}}",
     "subtitle": "Ingresa tus credenciales para acceder al panel.",
     "panelTitle": "Panel de gestión inmobiliaria",
     "panelDesc": "Administra tus propiedades, actualiza listados y gestiona clientes desde un solo lugar. Acceso exclusivo para el equipo Century 21.",
@@ -101,7 +101,9 @@
       "active": "Propiedades activas",
       "negotiation": "En negociación",
       "closings": "Cierres este mes",
-      "satisfaction": "Satisfacción"
+      "satisfaction": "Satisfacción",
+      "drafts": "Borradores",
+      "archived": "Archivadas"
     },
     "form": {
       "email": "Correo electrónico",
@@ -122,7 +124,7 @@
     }
   },
   "dashboard": {
-    "greeting": "Buenos días, Aura",
+    "greeting": "Buenos días{{name}}",
     "summary": "Aquí tienes un resumen de tus propiedades y actividad reciente.",
     "kpis": {
       "total": "Total propiedades",
@@ -149,7 +151,6 @@
       "queries": "Consultas recibidas",
       "negotiation": "Propiedades en negociación",
       "projected": "Cierres proyectados"
-    },
-    "date": "Viernes, 13 de junio de 2025"
+    }
   }
 }

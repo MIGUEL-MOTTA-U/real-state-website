@@ -7,7 +7,9 @@ import { DashboardOverview } from "./DashboardOverview";
 import { ListingsTable } from "./ListingsTable";
 import { ListingFormView } from "./ListingFormView";
 import { SettingsView } from "./SettingsView";
+import { AgentAvatar } from "./AgentAvatar";
 import { useListings } from "../hooks/useListings";
+import { useAgentProfile } from "../hooks/useAgentProfile";
 import type { ApiListing } from "../services/types";
 
 type DashView = "overview" | "listings" | "new-listing" | "edit-listing" | "settings";
@@ -28,6 +30,7 @@ export function DashboardShell({ onLogout }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingListing, setEditingListing] = useState<ApiListing | null>(null);
   const { listings } = useListings();
+  const profile = useAgentProfile();
 
   const countByStatus = (status: string) =>
     String(listings.filter((l) => l.publication_status === status).length);
@@ -68,9 +71,9 @@ export function DashboardShell({ onLogout }: DashboardShellProps) {
                 className="text-white text-sm font-semibold leading-none"
                 style={{ fontFamily: "'Playfair Display', serif" }}
               >
-                Aura Urrea
+                {profile.name || "Agente"}
               </p>
-              <p className="text-[#C9A84C] text-[10px] mt-0.5">Century 21 Colombia</p>
+              <p className="text-[#C9A84C] text-[10px] mt-0.5">{profile.officeName || "Century 21 Colombia"}</p>
             </div>
           </div>
         </div>
@@ -121,14 +124,15 @@ export function DashboardShell({ onLogout }: DashboardShellProps) {
         {/* User section */}
         <div className="p-4 border-t border-white/8">
           <div className="flex items-center gap-2.5 mb-3">
-            <img
-              src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=40&h=40&fit=crop&auto=format"
-              alt="Aura Urrea"
-              className="w-8 h-8 object-cover rounded-full"
+            <AgentAvatar
+              src={profile.avatarUrl}
+              name={profile.name}
+              className="w-8 h-8 rounded-full shrink-0"
+              textClass="text-[10px]"
             />
             <div className="flex-1 min-w-0">
-              <p className="text-white text-xs font-semibold truncate">Aura Urrea</p>
-              <p className="text-white/40 text-[10px] truncate">Agente Senior</p>
+              <p className="text-white text-xs font-semibold truncate">{profile.name || "Agente"}</p>
+              <p className="text-white/40 text-[10px] truncate">{profile.headline || "Agente inmobiliario"}</p>
             </div>
           </div>
           <button
@@ -180,11 +184,16 @@ export function DashboardShell({ onLogout }: DashboardShellProps) {
             </div>
 
             {/* Avatar */}
-            <button className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <img
-                src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=32&h=32&fit=crop&auto=format"
-                alt="Aura"
-                className="w-7 h-7 object-cover rounded-full"
+            <button
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              onClick={() => setView("settings")}
+              title="Ir a Configuración"
+            >
+              <AgentAvatar
+                src={profile.avatarUrl}
+                name={profile.name}
+                className="w-7 h-7 rounded-full"
+                textClass="text-[10px]"
               />
             </button>
           </div>

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Eye, EyeOff, ArrowLeft, Lock, Mail, Chrome } from "lucide-react";
+import { useAgentProfile } from "../hooks/useAgentProfile";
+import { useListings } from "../hooks/useListings";
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -14,6 +16,19 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const profile = useAgentProfile();
+  const { listings } = useListings();
+
+  const firstName = profile.name.trim().split(/\s+/)[0] ?? "";
+  const countByStatus = (status: string) =>
+    listings.filter((l) => l.publication_status === status).length;
+  // Cifras reales del backend; las que no existen no se muestran.
+  const PANEL_STATS = [
+    { n: String(countByStatus("published")), label: t('login.stats.active') },
+    { n: String(countByStatus("draft")), label: t('login.stats.drafts') },
+    { n: String(countByStatus("archived")), label: t('login.stats.archived') },
+    { n: profile.stats.satisfied, label: t('login.stats.satisfaction') },
+  ].filter(({ n }) => n);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,9 +65,9 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
             </div>
             <div>
               <p className="text-white font-semibold text-sm" style={{ fontFamily: "'Playfair Display', serif" }}>
-                Aura Urrea
+                {profile.name || profile.officeName || "Century 21 Colombia"}
               </p>
-              <p className="text-[#C9A84C] text-xs">Century 21 Colombia</p>
+              <p className="text-[#C9A84C] text-xs">{profile.name ? profile.officeName || "Century 21 Colombia" : ""}</p>
             </div>
           </div>
 
@@ -72,12 +87,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
             </p>
 
             <div className="mt-10 grid grid-cols-2 gap-4">
-              {[
-                { n: "47", label: t('login.stats.active') },
-                { n: "12", label: t('login.stats.negotiation') },
-                { n: "8", label: t('login.stats.closings') },
-                { n: "98%", label: t('login.stats.satisfaction') },
-              ].map(({ n, label }) => (
+              {PANEL_STATS.map(({ n, label }) => (
                 <div key={label} className="bg-white/5 border border-white/10 p-4">
                   <p
                     className="text-[#C9A84C] mb-0.5"
@@ -111,7 +121,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
             className="text-[#0B1F3A] mb-2"
             style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.75rem", fontWeight: 600 }}
           >
-            {t('login.welcome')}
+            {t('login.welcome', { name: firstName ? `, ${firstName}` : "" })}
           </h1>
           <p className="text-[#6B7280] text-sm">
             {t('login.subtitle')}
@@ -135,7 +145,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="aura.urrea@century21.com.co"
+                placeholder="correo@ejemplo.com"
                 className="w-full pl-9 pr-4 py-3 border border-[#E8E4DB] bg-white text-[#1F2937] text-sm focus:outline-none focus:border-[#0B1F3A] transition-colors"
               />
             </div>

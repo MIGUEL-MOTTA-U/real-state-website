@@ -29,7 +29,7 @@
     "about": {
       "title": "About Me",
       "heroTitle": "Experience that transforms properties into homes",
-      "desc1": "I am Aura Urrea, a certified real estate consultant with over 12 years of experience in the Colombian market. I specialize in high-value properties in Bogotá, Medellín, and the Caribbean Coast.",
+      "desc1": "Certified real estate consultancy with extensive experience in the Colombian market, specializing in high-value properties.",
       "desc2": "As part of Century 21, the largest real estate network in the world, I have access to exclusive resources, advanced valuation tools, and a network of national and international buyers.",
       "gold": "Century 21 Gold Agent",
       "certified": "Certified CIJ Colombia",
@@ -86,14 +86,14 @@
     "footer": {
       "nav": "Navigation",
       "contact": "Contact",
-      "rights": "© 2025 Aura Urrea · Century 21 Colombia. All rights reserved.",
+      "rights": "© {{year}} {{name}}. All rights reserved.",
       "license": "Professional License LONJA DE PROPIEDAD RAÍZ Nº 12.847"
     }
   },
   "login": {
     "back": "Back to site",
     "private": "Private Access",
-    "welcome": "Welcome, Aura",
+    "welcome": "Welcome{{name}}",
     "subtitle": "Enter your credentials to access the panel.",
     "panelTitle": "Real Estate Management Panel",
     "panelDesc": "Manage your properties, update listings and manage clients from one place. Exclusive access for the Century 21 team.",
@@ -101,7 +101,9 @@
       "active": "Active properties",
       "negotiation": "In negotiation",
       "closings": "Closings this month",
-      "satisfaction": "Satisfaction"
+      "satisfaction": "Satisfaction",
+      "drafts": "Drafts",
+      "archived": "Archived"
     },
     "form": {
       "email": "Email address",
@@ -122,7 +124,7 @@
     }
   },
   "dashboard": {
-    "greeting": "Good morning, Aura",
+    "greeting": "Good morning{{name}}",
     "summary": "Here is a summary of your properties and recent activity.",
     "kpis": {
       "total": "Total properties",
@@ -149,7 +151,6 @@
       "queries": "Queries received",
       "negotiation": "Properties in negotiation",
       "projected": "Projected closings"
-    },
-    "date": "Friday, June 13, 2025"
+    }
   }
 }
