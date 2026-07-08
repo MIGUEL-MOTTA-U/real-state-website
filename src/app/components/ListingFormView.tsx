@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle, CheckCircle2, Upload, X, MapPin,
   Video, Layout, Camera, ArrowLeft, Eye,
-  ChevronRight, Info, Loader2, AlertTriangle, Star
+  ChevronRight, Info, Loader2, AlertTriangle, Star, FileText
 } from "lucide-react";
 import { listingsApi, uploadsApi, ApiError } from "../services/api";
 import type { ApiAsset, ApiListing } from "../services/types";
@@ -23,6 +23,7 @@ import {
   lotAreaFromDimensions,
   MAX_DESCRIPTION_SHORT,
 } from "../services/validation";
+import { parseFicha } from "../services/fichaParser";
 
 type Tab = "general" | "location" | "pricing" | "areas" | "features" | "media";
 
@@ -196,7 +197,36 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Importación de ficha técnica (PDF)
+  const [importing, setImporting] = useState(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+
   const isEdit = form.listing_id !== "";
+
+  const handleFichaImport = async (file: File) => {
+    setImporting(true);
+    setError(null);
+    setImportNotice(null);
+    setImportWarnings([]);
+    try {
+      // Carga diferida: pdf.js solo se descarga al importar una ficha.
+      const { extractPdfText } = await import("../services/fichaPdf");
+      const text = await extractPdfText(file);
+      const { listing: imported, warnings } = parseFicha(text);
+      setForm(imported);
+      setImportWarnings(warnings);
+      setImportNotice(
+        imported.external_id
+          ? `Ficha ${imported.external_id} importada. Revisa cada pestaña, ajusta lo necesario y sube las fotos antes de publicar.`
+          : "Ficha importada. Revisa cada pestaña, ajusta lo necesario y sube las fotos antes de publicar.",
+      );
+    } catch {
+      setError("No se pudo leer la ficha técnica: verifica que sea un PDF válido.");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const patch = (partial: Partial<ApiListing>) => setForm((f) => ({ ...f, ...partial }));
   const patchLocation = (partial: Partial<ApiListing["location"]>) =>
@@ -339,6 +369,52 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
   const tabContent: Record<Tab, React.ReactNode> = {
     general: (
       <div className="grid md:grid-cols-2 gap-5">
+        {!isEdit && (
+          <div className="md:col-span-2">
+            <label
+              className={`flex items-center gap-3 border border-dashed px-4 py-3 transition-colors ${
+                importing
+                  ? "border-[#E8E4DB] opacity-60 cursor-wait"
+                  : "border-[#C9A84C] cursor-pointer hover:bg-[#C9A84C]/5"
+              }`}
+            >
+              {importing
+                ? <Loader2 size={16} className="text-[#C9A84C] animate-spin shrink-0" />
+                : <FileText size={16} className="text-[#C9A84C] shrink-0" />}
+              <div>
+                <p className="text-[#1F2937] text-sm font-medium">
+                  {importing ? "Leyendo ficha técnica..." : "Importar desde ficha técnica (PDF)"}
+                </p>
+                <p className="text-[#6B7280] text-xs">
+                  Prellena el formulario con los datos de la ficha de Century 21; después revisas y publicas.
+                </p>
+              </div>
+              <input
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                disabled={importing}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleFichaImport(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {importNotice && (
+              <div className="mt-2 bg-green-50 border border-green-200 text-green-700 px-3 py-2 text-xs flex items-center gap-2">
+                <CheckCircle2 size={12} className="shrink-0" />
+                <span>{importNotice}</span>
+              </div>
+            )}
+            {importWarnings.map((w) => (
+              <div key={w} className="mt-2 bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 text-xs flex items-center gap-2">
+                <AlertTriangle size={12} className="shrink-0" />
+                <span>{w}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <Field label="ID de propiedad" hint="Generado automáticamente al guardar">
           <Input value={form.listing_id || "(se genera al guardar)"} className="bg-[#F8F7F4] text-[#6B7280] cursor-not-allowed" />
         </Field>
