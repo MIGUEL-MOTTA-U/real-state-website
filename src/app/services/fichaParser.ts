@@ -97,7 +97,21 @@ interface Sections {
   externalId: string;
 }
 
-function splitSections(text: string): Sections {
+/**
+ * pdf.js extrae las ligaduras tipográficas como items sueltos con espacios.
+ * Dos casos observados en las fichas reales:
+ *  - dentro de palabra, con UN espacio a cada lado: "Edi fi cio" → "Edificio"
+ *  - iniciando palabra, con gap ancho a la izquierda: "con   fl ujos" →
+ *    la ligadura solo se une a la derecha ("con flujos")
+ */
+export function collapseLigatures(text: string): string {
+  return text
+    .replace(/(\S) (ffi|ffl|ff|fi|fl) (\S)/g, "$1$2$3")
+    .replace(/(^|\s)(ffi|ffl|ff|fi|fl) (\S)/g, "$1$2$3");
+}
+
+function splitSections(rawText: string): Sections {
+  const text = collapseLigatures(rawText);
   const externalId = /ID:\s*(\d+)/.exec(text)?.[1] ?? "";
 
   const marker = (l: string, name: string) => normalizeLabel(l).startsWith(normalizeLabel(name));
@@ -116,7 +130,8 @@ function splitSections(text: string): Sections {
   for (let i = 0; i < rawLines.length; i++) {
     // El trim elimina \f (es whitespace): detectar el salto ANTES de limpiar.
     const isPageBreak = rawLines[i].includes(PAGE_BREAK);
-    const line = rawLines[i].replace(PAGE_BREAK, "").trim();
+    // pdf.js deja espacios múltiples entre items ("Acabados:   AA").
+    const line = rawLines[i].replace(PAGE_BREAK, "").replace(/\s+/g, " ").trim();
     if (isPageBreak && zone === "description") afterDescriptionPageBreak = true;
     if (!line) continue;
 
@@ -134,8 +149,11 @@ function splitSections(text: string): Sections {
         if (pair) {
           propertyPairs.push([pair[1], pair[2]]);
           currentLabel = pair[1];
-        } else if (currentLabel) {
-          // Valor que continúa en la línea siguiente (ej. el precio).
+        } else if (currentLabel && line.split(/\s+/).length <= 2) {
+          // Valor que continúa en la línea siguiente (ej. "$9.600.000.000,00",
+          // "Alta", "11", "Muy" + "Bueno"). Las líneas largas sin dos puntos
+          // son etiquetas partidas (ej. "Cuota De Administración PH"), no
+          // valores: se ignoran para no contaminar el par anterior.
           const last = propertyPairs[propertyPairs.length - 1];
           last[1] = `${last[1]} ${line}`.trim();
         }
@@ -205,6 +223,9 @@ export function parseFicha(text: string): FichaImportResult {
         break;
       case "administracion":
       case "admon":
+      // "Cuota De Administración PH Incluido En El Precio:" llega con la
+      // etiqueta partida; la parte con dos puntos es "Incluido En El Precio".
+      case "incluido en el precio":
         listing.pricing.admin_fee = parseCoNumber(value);
         break;
       case "estrato":
@@ -278,6 +299,13 @@ export function parseFicha(text: string): FichaImportResult {
 
   listing.pricing.currency = "COP";
   listing.features.tags = [...new Set(tags)];
+
+  // Amenidades booleanas del esquema derivadas de los DATOS GENERALES.
+  for (const tag of listing.features.tags) {
+    const t = normalizeLabel(tag);
+    if (t.includes("acepta mascotas")) listing.features.pets_allowed = true;
+    if (t.startsWith("piscina") || t.includes("alberca")) listing.features.has_pool = true;
+  }
 
   // Ubicación: "Barrio" + "Ciudad, Departamento".
   listing.location.country = "Colombia";

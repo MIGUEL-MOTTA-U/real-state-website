@@ -13,8 +13,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
  * para distinguir la descripción de la continuación de tags).
  */
 export async function extractPdfText(file: File): Promise<string> {
-  const data = await file.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data }).promise;
+  // pdf.js v6 exige Uint8Array (un ArrayBuffer crudo lanza excepción).
+  const data = new Uint8Array(await file.arrayBuffer());
+  const task = pdfjs.getDocument({ data });
+  const doc = await task.promise;
   try {
     const pages: string[] = [];
     for (let i = 1; i <= doc.numPages; i++) {
@@ -31,6 +33,7 @@ export async function extractPdfText(file: File): Promise<string> {
     }
     return pages.join(`\n${PAGE_BREAK}\n`);
   } finally {
-    await doc.destroy();
+    // En pdf.js v6 destroy() vive en el loading task, no en el documento.
+    await task.destroy();
   }
 }
