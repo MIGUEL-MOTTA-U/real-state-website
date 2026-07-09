@@ -1,84 +1,101 @@
-# Autenticación con AWS Cognito (Etapa 2)
+# Autenticación con AWS Cognito — OIDC / Hosted UI (Etapa 2)
 
 Estado del proyecto, decisiones y pasos pendientes para retomar la
 implementación en cualquier momento.
+
+**Método único de acceso al panel**: OAuth 2.0 / OIDC con el Hosted UI de
+Cognito (código de autorización + PKCE). El formulario de usuario/contraseña
+embebido y los botones de login social fueron eliminados (2026-07-09).
 
 ## Estado actual (2026-07-09)
 
 | Pieza | Estado |
 |---|---|
-| Cliente de auth en el front (`src/app/services/auth.ts`) | ✅ Implementado y testeado |
-| Login real en `LoginPage` (email + contraseña) | ✅ Con fallback a login simulado sin env vars |
-| Token Bearer en todas las peticiones (`api.ts`) | ✅ ID token renovado automáticamente |
-| Sesión persistente por pestaña + logout | ✅ `sessionStorage`, recarga vuelve al panel |
-| User Pool + App client en AWS | ⬜ Pendiente (pasos abajo) |
-| JWT authorizer en API Gateway | ⬜ Pendiente (pasos abajo) |
-| Challenge `NEW_PASSWORD_REQUIRED` en el front | ⬜ No implementado: hoy muestra mensaje explicativo |
+| Flujo OIDC en el front (`src/app/services/auth.ts`) | ✅ Redirección + PKCE + intercambio y refresh de tokens |
+| Botón único de acceso en `LoginPage` | ✅ Redirige al Hosted UI; modo simulado sin env vars |
+| Retorno del Hosted UI (`?code=`) en `App.tsx` | ✅ Intercambia el código y entra al panel |
+| Token Bearer (ID token) en todas las peticiones | ✅ Con renovación automática |
+| Logout local + Hosted UI | ✅ Requiere logout URL registrada |
+| User Pool | ✅ `us-east-1_jyq6Yp72h` |
+| App client (con secret) | ✅ `41nl041ggahj0of3qsh6l0kkne` |
+| Dominio del Hosted UI | ⬜ Crear y ponerlo en `VITE_COGNITO_DOMAIN` |
+| Callback/logout URLs en el app client | ⬜ Registrar (ver abajo) |
+| JWT authorizer en API Gateway | ⬜ Pendiente |
+
+## URLs a registrar en Cognito (App client → Hosted UI)
+
+- **Allowed callback URLs**:
+  - `http://localhost:5173/` (desarrollo)
+  - `https://<dominio-productivo>/` (ej. `https://aura-urrea.vercel.app/`)
+- **Allowed sign-out URLs**: las mismas dos URLs.
+- **OAuth 2.0 grant types**: Authorization code grant.
+- **OpenID Connect scopes**: `openid`, `email`, `phone`.
+
+La app usa la **raíz del sitio** como ruta de redirección: al volver del
+Hosted UI, `App.tsx` detecta `?code=...`, intercambia tokens y entra al panel.
 
 ## Decisiones de diseño
 
-- **Sin SDK**: el API de Cognito IDP se invoca con `fetch` directo
-  (`InitiateAuth`, cabecera `X-Amz-Target`). Evita sumar `aws-amplify`
-  (~100 kB+) al bundle. Flujos usados: `USER_PASSWORD_AUTH` (login) y
-  `REFRESH_TOKEN_AUTH` (renovación).
+- **Sin SDK**: el flujo OIDC se implementa con `fetch` directo a
+  `{dominio}/oauth2/authorize`, `/oauth2/token` y `/logout`. Evita sumar
+  `aws-amplify`/`authlib`-equivalentes al bundle.
+- **PKCE (S256)** + parámetro `state` (anti-CSRF) aunque el cliente tenga
+  secret: defensa en profundidad.
+- **App client confidencial**: el secret viaja como `Authorization: Basic`
+  al endpoint de tokens. ⚠️ En una SPA el secret queda embebido en el bundle
+  (todas las `VITE_*` son públicas). La alternativa recomendada a futuro es
+  un app client **público** (sin secret): el flujo con PKCE funciona igual y
+  solo habría que vaciar `VITE_COGNITO_CLIENT_SECRET`.
 - **ID token como Bearer**: el JWT authorizer de API Gateway (HTTP API)
-  valida el claim `aud`, que en el ID token es el client id. Si en el futuro
-  se prefiere el access token, hay que configurar el authorizer para validar
-  `client_id` en su lugar.
-- **`sessionStorage`** (no `localStorage`): la sesión sobrevive recargas pero
-  no persiste al cerrar el navegador — menor exposición ante XSS.
-- **Fallback local**: sin `VITE_COGNITO_REGION`/`VITE_COGNITO_CLIENT_ID`, el
-  login vuelve al modo simulado para no bloquear el desarrollo local.
+  valida el claim `aud`, que en el ID token es el client id.
+- **`sessionStorage`**: la sesión sobrevive recargas, no persiste al cerrar
+  el navegador (menor exposición ante XSS).
+- **Fallback local**: sin `VITE_COGNITO_DOMAIN`/`VITE_COGNITO_CLIENT_ID`, el
+  botón de acceso entra directo al panel (desarrollo sin AWS).
 
 ## Variables de entorno (front)
 
 ```bash
 # .env (local) o variables del proyecto en Vercel
-VITE_COGNITO_REGION=us-east-1                 # región del User Pool
-VITE_COGNITO_CLIENT_ID=xxxxxxxxxxxxxxxxxxxx   # app client SIN secret
-VITE_COGNITO_USER_POOL_ID=us-east-1_XxXxXxXxX # informativa / issuer del authorizer
+VITE_COGNITO_DOMAIN=https://<prefijo>.auth.us-east-1.amazoncognito.com
+VITE_COGNITO_CLIENT_ID=41nl041ggahj0of3qsh6l0kkne
+VITE_COGNITO_CLIENT_SECRET=<secret del app client>
 ```
+
+Nota: `VITE_COGNITO_REGION` y `VITE_COGNITO_USER_POOL_ID` ya no las usa el
+front. El User Pool ID sí define el **issuer** del JWT authorizer:
+`https://cognito-idp.us-east-1.amazonaws.com/us-east-1_jyq6Yp72h`.
 
 ## Pasos pendientes en AWS (en orden)
 
-1. **Crear el User Pool** (Cognito → User pools → Create):
-   - Sign-in con email; políticas de contraseña por defecto están bien.
-   - Sin MFA obligatorio (opcional según criterio).
-2. **Crear el App client**: tipo "Public client", **sin client secret**, y en
-   *Authentication flows* habilitar `ALLOW_USER_PASSWORD_AUTH` y
-   `ALLOW_REFRESH_TOKEN_AUTH`.
-3. **Crear el usuario del agente** (Aura) con su email; al crearlo con
-   contraseña temporal, marcar la contraseña como permanente
-   (`admin-set-user-password --permanent`) porque el front aún no implementa
-   el challenge `NEW_PASSWORD_REQUIRED`.
-4. **JWT authorizer en API Gateway (HTTP API)**:
-   - Issuer: `https://cognito-idp.<región>.amazonaws.com/<user-pool-id>`
-   - Audience: el client id del paso 2.
-   - Adjuntarlo SOLO a las rutas de mutación: `POST/PUT/DELETE /listings`,
+1. **Crear el dominio del Hosted UI**: Cognito → User pool → App integration
+   → Domain (un prefijo propio o un dominio custom). Copiar la URL completa
+   a `VITE_COGNITO_DOMAIN`.
+2. **Registrar las callback/sign-out URLs** en el app client (sección de
+   arriba) y verificar que el grant "Authorization code" y los scopes
+   `openid email phone` estén habilitados.
+3. **JWT authorizer en API Gateway (HTTP API)**:
+   - Issuer: `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_jyq6Yp72h`
+   - Audience: `41nl041ggahj0of3qsh6l0kkne`
+   - Adjuntarlo SOLO a rutas de mutación: `POST/PUT/DELETE /listings`,
      `PUT /users/{id}`, `POST /uploads`, `DELETE /uploads/{id}`.
-   - Las lecturas públicas quedan abiertas: `GET /listings`,
-     `GET /listings/{id}`, `GET /listings/{id}/media`, `GET /users`,
-     `GET /users/{id}` (las usa el sitio público sin sesión).
-5. **Backend**: quitar `ALLOW_UNAUTHENTICATED_UPLOADS` de las variables de la
-   Lambda; el `owner_id` de los assets ya se extrae del claim `sub` que el
-   authorizer inyecta en el request context.
-6. **Configurar las 3 variables** `VITE_COGNITO_*` en Vercel y redeploy.
+   - Las lecturas públicas quedan abiertas (las usa el sitio público).
+4. **Backend**: quitar `ALLOW_UNAUTHENTICATED_UPLOADS` de la Lambda; el
+   `owner_id` ya se extrae del claim `sub` del authorizer.
+5. **Vercel**: configurar las 3 variables `VITE_COGNITO_*` y redeploy.
 
 ## Cómo probarlo end-to-end
 
-1. Configura las 3 variables en `.env` y reinicia `pnpm dev`.
-2. Panel → login con el email/contraseña del usuario de Cognito.
-3. Verifica en la pestaña Network que las peticiones llevan
-   `Authorization: Bearer <jwt>` y que una edición de inmueble responde 200
-   a través del API Gateway con authorizer activo.
-4. El refresh se puede probar dejando la sesión abierta más de 1 hora
-   (expiración del ID token) y haciendo una mutación.
+1. Completa `VITE_COGNITO_DOMAIN` en `.env` y reinicia `pnpm dev`.
+2. Panel → botón "Ingresar al panel" → redirige al Hosted UI → credenciales
+   del usuario del pool → vuelve a `http://localhost:5173/?code=...` y entra
+   al panel automáticamente.
+3. En Network verifica `POST {dominio}/oauth2/token` (200) y que las
+   peticiones al API llevan `Authorization: Bearer <jwt>`.
+4. "Cerrar sesión" debe pasar por `{dominio}/logout` y volver al sitio.
 
 ## Siguientes pasos naturales (post-MVP)
 
-- Implementar el challenge `NEW_PASSWORD_REQUIRED` (RespondToAuthChallenge)
-  para no depender de la consola al crear usuarios.
-- "Olvidé mi contraseña" (`ForgotPassword`/`ConfirmForgotPassword`).
-- Ocultar los botones de login social del `LoginPage` o conectarlos a los
-  identity providers federados del User Pool (Hosted UI).
-- Expulsar al usuario al panel de login cuando una mutación devuelva 401.
+- Migrar a app client **público** (sin secret) manteniendo PKCE.
+- Expulsar al login cuando una mutación devuelva 401 (sesión revocada).
+- Personalizar el look del Hosted UI (logo/colores de la marca).

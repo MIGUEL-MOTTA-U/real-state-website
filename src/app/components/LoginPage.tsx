@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Eye, EyeOff, ArrowLeft, Lock, Mail, Chrome } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
 import { useAgentProfile } from "../hooks/useAgentProfile";
 import { useListings } from "../hooks/useListings";
-import { cognitoEnabled, signIn } from "../services/auth";
+import { cognitoEnabled, signInRedirect } from "../services/auth";
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -12,9 +12,6 @@ interface LoginPageProps {
 
 export function LoginPage({ onLogin, onBack }: LoginPageProps) {
   const { t } = useTranslation();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const profile = useAgentProfile();
@@ -31,28 +28,24 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
     { n: profile.stats.satisfied, label: t('login.stats.satisfaction') },
   ].filter(({ n }) => n);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) {
-      setError(t('login.form.errorFields'));
-      return;
-    }
+  // Único método de acceso: OIDC con el Hosted UI de Cognito. Sin variables
+  // configuradas (desarrollo local) el botón entra directo al panel.
+  const handleSignIn = () => {
     setError("");
     setLoading(true);
 
     if (!cognitoEnabled()) {
-      // Sin User Pool configurado (desarrollo local): login simulado.
       setTimeout(() => {
         setLoading(false);
         onLogin();
-      }, 1200);
+      }, 800);
       return;
     }
 
-    void signIn(email, password)
-      .then(() => onLogin())
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
+    void signInRedirect().catch((err: Error) => {
+      setError(err.message || "No se pudo iniciar el proceso de autenticación.");
+      setLoading(false);
+    });
   };
 
   return (
@@ -145,81 +138,20 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-[#1F2937] text-xs font-semibold block mb-1.5">
-              {t('login.form.email')}
-            </label>
-            <div className="relative">
-              <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="correo@ejemplo.com"
-                className="w-full pl-9 pr-4 py-3 border border-[#E8E4DB] bg-white text-[#1F2937] text-sm focus:outline-none focus:border-[#0B1F3A] transition-colors"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[#1F2937] text-xs font-semibold block mb-1.5">
-              {t('login.form.password')}
-            </label>
-            <div className="relative">
-              <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
-              <input
-                type={showPass ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••"
-                className="w-full pl-9 pr-10 py-3 border border-[#E8E4DB] bg-white text-[#1F2937] text-sm focus:outline-none focus:border-[#0B1F3A] transition-colors"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPass(!showPass)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#1F2937]"
-              >
-                {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex justify-end">
-            <button type="button" className="text-[#C9A84C] text-xs hover:underline">
-              {t('login.form.forgot')}
-            </button>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#0B1F3A] text-white py-3 text-sm font-semibold hover:bg-[#C9A84C] hover:text-[#0B1F3A] transition-colors disabled:opacity-60"
-          >
-            {loading ? t('login.form.verifying') : t('login.form.submit')}
-          </button>
-        </form>
-
-        <div className="my-6 flex items-center gap-3">
-          <div className="flex-1 h-px bg-[#E8E4DB]" />
-          <span className="text-[#6B7280] text-xs">{t('login.form.continueWith')}</span>
-          <div className="flex-1 h-px bg-[#E8E4DB]" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <button className="flex items-center justify-center gap-2 border border-[#E8E4DB] bg-white py-2.5 text-sm text-[#1F2937] hover:border-[#0B1F3A] transition-colors">
-            <Chrome size={14} />
-            {t('login.social.aws')}
-          </button>
-          <button className="flex items-center justify-center gap-2 border border-[#E8E4DB] bg-white py-2.5 text-sm text-[#1F2937] hover:border-[#0B1F3A] transition-colors">
-            <svg width="14" height="14" viewBox="0 0 23 23" fill="none">
-              <path d="M11.5 0C5.149 0 0 5.149 0 11.5S5.149 23 11.5 23 23 17.851 23 11.5 17.851 0 11.5 0z" fill="#00A4EF"/>
-              <path d="M11.5 2.3A9.2 9.2 0 1 1 2.3 11.5 9.2 9.2 0 0 1 11.5 2.3z" fill="#fff"/>
-              <path d="M11.5 5.75a5.75 5.75 0 1 0 0 11.5 5.75 5.75 0 0 0 0-11.5zm0 1.15a4.6 4.6 0 1 1 0 9.2 4.6 4.6 0 0 1 0-9.2z" fill="#00A4EF"/>
-            </svg>
-            {t('login.social.entraid')}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleSignIn}
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-2 bg-[#0B1F3A] text-white py-3 text-sm font-semibold hover:bg-[#C9A84C] hover:text-[#0B1F3A] transition-colors disabled:opacity-60"
+        >
+          <Lock size={14} />
+          {loading ? t('login.form.verifying') : t('login.form.submit')}
+        </button>
+        <p className="mt-3 text-[#6B7280] text-xs text-center">
+          {cognitoEnabled()
+            ? "Serás redirigido al inicio de sesión seguro de AWS Cognito."
+            : "Modo local: acceso directo sin credenciales (Cognito no configurado)."}
+        </p>
 
         <p className="mt-8 text-[#6B7280] text-xs text-center">
           {t('login.footer.restricted')} <br />

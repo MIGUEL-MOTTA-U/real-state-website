@@ -1,6 +1,6 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { PublicSite } from "./components/PublicSite";
-import { cognitoEnabled, getSession, signOut } from "./services/auth";
+import { cognitoEnabled, getSession, handleAuthCallback, signOut } from "./services/auth";
 
 // El sitio público es la primera pantalla: el panel y el login se cargan en
 // chunks aparte solo cuando se necesitan (mejor primera carga en redes lentas).
@@ -28,6 +28,18 @@ export default function App() {
   const [view, setView] = useState<AppView>(() =>
     cognitoEnabled() && getSession() ? "dashboard" : "public",
   );
+
+  // Retorno del Hosted UI de Cognito (?code=...): intercambia el código por
+  // tokens y entra al panel.
+  useEffect(() => {
+    handleAuthCallback()
+      .then((authenticated) => {
+        if (authenticated) setView("dashboard");
+      })
+      .catch(() => {
+        /* código inválido/expirado: se queda en el sitio público */
+      });
+  }, []);
 
   const handleLogout = () => {
     signOut();

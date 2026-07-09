@@ -1,21 +1,22 @@
-// Autenticación contra AWS Cognito (Etapa 2) sin SDK: el API de Cognito IDP
-// se invoca directamente con fetch (InitiateAuth), lo que evita sumar
-// dependencias pesadas al bundle.
+// Autenticación con AWS Cognito vía OIDC (Hosted UI) — único método de
+// acceso al panel. Flujo: código de autorización + PKCE; el intercambio y la
+// renovación de tokens van contra {dominio}/oauth2/token.
 //
 // Variables de entorno (ver .env.example y docs/AUTH_COGNITO.md):
-//   VITE_COGNITO_REGION     región del User Pool (ej. us-east-1)
-//   VITE_COGNITO_CLIENT_ID  App client SIN secret y con USER_PASSWORD_AUTH
-//   VITE_COGNITO_USER_POOL_ID  informativa (issuer del JWT authorizer)
+//   VITE_COGNITO_DOMAIN         dominio del Hosted UI
+//                               (ej. https://xxxx.auth.us-east-1.amazoncognito.com)
+//   VITE_COGNITO_CLIENT_ID      app client del User Pool
+//   VITE_COGNITO_CLIENT_SECRET  secret del app client (Basic auth en /oauth2/token)
 //
-// Sin estas variables la app conserva el login simulado (desarrollo local).
-//
-// Tokens en sessionStorage: sobreviven recargas pero no cierran sesión en
-// otras pestañas ni persisten al cerrar el navegador (menor exposición que
-// localStorage frente a XSS).
+// La URL de redirección registrada en Cognito debe ser la raíz del sitio:
+// http://localhost:5173/ en desarrollo y https://<dominio-productivo>/ en prod.
+// Sin estas variables la app conserva el acceso simulado (desarrollo local).
 
 const STORAGE_KEY = "rs.auth.session";
+const PKCE_KEY = "rs.auth.pkce";
 /** Margen para renovar el token antes de que expire de verdad. */
 const EXPIRY_MARGIN_MS = 60_000;
+const OAUTH_SCOPES = "email openid phone";
 
 export interface AuthSession {
   idToken: string;
@@ -23,86 +24,152 @@ export interface AuthSession {
   refreshToken: string;
   /** Epoch ms en el que expira el idToken. */
   expiresAt: number;
-  email: string;
 }
 
-interface CognitoAuthResult {
-  AuthenticationResult?: {
-    IdToken: string;
-    AccessToken: string;
-    RefreshToken?: string;
-    ExpiresIn: number;
-  };
-  ChallengeName?: string;
-  __type?: string;
-  message?: string;
+interface TokenResponse {
+  id_token?: string;
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  error?: string;
+  error_description?: string;
 }
 
 function cognitoConfig() {
-  const region = ((import.meta.env?.VITE_COGNITO_REGION as string | undefined) ?? "").trim();
+  const domain = ((import.meta.env?.VITE_COGNITO_DOMAIN as string | undefined) ?? "")
+    .trim()
+    .replace(/\/+$/, "");
   const clientId = ((import.meta.env?.VITE_COGNITO_CLIENT_ID as string | undefined) ?? "").trim();
-  return { region, clientId };
+  const clientSecret = ((import.meta.env?.VITE_COGNITO_CLIENT_SECRET as string | undefined) ?? "").trim();
+  return { domain, clientId, clientSecret };
 }
 
-/** true cuando hay User Pool configurado; false = login simulado local. */
+/** true cuando hay Hosted UI configurado; false = acceso simulado local. */
 export function cognitoEnabled(): boolean {
-  const { region, clientId } = cognitoConfig();
-  return Boolean(region && clientId);
+  const { domain, clientId } = cognitoConfig();
+  return Boolean(domain && clientId);
 }
 
-async function cognitoCall(target: string, body: unknown): Promise<CognitoAuthResult> {
-  const { region } = cognitoConfig();
-  const response = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-amz-json-1.1",
-      "X-Amz-Target": `AWSCognitoIdentityProviderService.${target}`,
-    },
-    body: JSON.stringify(body),
+/** URL de redirección OAuth: la raíz del sitio (registrarla en Cognito). */
+export function redirectUri(): string {
+  return `${window.location.origin}/`;
+}
+
+// ── PKCE ──────────────────────────────────────────────────────────────────────
+
+function randomString(length: number): string {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"[b % 62]).join("");
+}
+
+async function pkceChallenge(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+// ── Flujo OIDC ────────────────────────────────────────────────────────────────
+
+/** Redirige al Hosted UI de Cognito para iniciar sesión. */
+export async function signInRedirect(): Promise<void> {
+  const { domain, clientId } = cognitoConfig();
+  const verifier = randomString(64);
+  const state = randomString(24);
+  sessionStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, state }));
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    response_type: "code",
+    scope: OAUTH_SCOPES,
+    redirect_uri: redirectUri(),
+    state,
+    code_challenge_method: "S256",
+    code_challenge: await pkceChallenge(verifier),
   });
-  const result = (await response.json()) as CognitoAuthResult;
-  if (!response.ok) {
-    throw new Error(friendlyAuthError(result.__type ?? "", result.message ?? ""));
-  }
-  return result;
+  window.location.assign(`${domain}/oauth2/authorize?${params.toString()}`);
 }
 
-function friendlyAuthError(type: string, message: string): string {
-  switch (type) {
-    case "NotAuthorizedException":
-      return "Correo o contraseña incorrectos.";
-    case "UserNotFoundException":
-      return "El usuario no existe en el sistema.";
-    case "UserNotConfirmedException":
-      return "El usuario aún no está confirmado: revisa tu correo.";
-    case "PasswordResetRequiredException":
-      return "Debes restablecer tu contraseña antes de ingresar.";
-    case "TooManyRequestsException":
-      return "Demasiados intentos: espera un momento y vuelve a intentarlo.";
+/**
+ * Procesa el retorno del Hosted UI (?code=...&state=...): intercambia el
+ * código por tokens y limpia la URL. Devuelve true si quedó sesión activa.
+ */
+export async function handleAuthCallback(): Promise<boolean> {
+  if (!cognitoEnabled()) return false;
+  const query = new URLSearchParams(window.location.search);
+  const code = query.get("code");
+  if (!code) return false;
+
+  // La URL se limpia siempre para no re-procesar el código en recargas.
+  window.history.replaceState({}, "", window.location.pathname);
+
+  let pkce: { verifier: string; state: string } | null = null;
+  try {
+    pkce = JSON.parse(sessionStorage.getItem(PKCE_KEY) ?? "null");
+  } catch {
+    pkce = null;
+  }
+  sessionStorage.removeItem(PKCE_KEY);
+  if (!pkce || query.get("state") !== pkce.state) return false;
+
+  const tokens = await tokenRequest({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: redirectUri(),
+    code_verifier: pkce.verifier,
+  });
+  saveSession(sessionFromTokens(tokens));
+  return true;
+}
+
+async function tokenRequest(params: Record<string, string>): Promise<TokenResponse> {
+  const { domain, clientId, clientSecret } = cognitoConfig();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  // App client confidencial: el secret viaja como Basic auth.
+  if (clientSecret) {
+    headers.Authorization = `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
+  }
+  const response = await fetch(`${domain}/oauth2/token`, {
+    method: "POST",
+    headers,
+    body: new URLSearchParams({ client_id: clientId, ...params }).toString(),
+  });
+  const data = (await response.json()) as TokenResponse;
+  if (!response.ok || data.error) {
+    throw new Error(friendlyTokenError(data.error ?? "", data.error_description ?? ""));
+  }
+  return data;
+}
+
+function friendlyTokenError(error: string, description: string): string {
+  switch (error) {
+    case "invalid_grant":
+      return "El código de acceso expiró o ya fue usado: inicia sesión de nuevo.";
+    case "invalid_client":
+      return "Configuración del cliente inválida: revisa VITE_COGNITO_CLIENT_ID y el secret.";
     default:
-      return message || "No se pudo iniciar sesión.";
+      return description || "No se pudo completar el inicio de sesión.";
   }
 }
 
-function sessionFromResult(result: CognitoAuthResult, email: string, previous?: AuthSession): AuthSession {
-  const auth = result.AuthenticationResult;
-  if (!auth) {
-    if (result.ChallengeName === "NEW_PASSWORD_REQUIRED") {
-      throw new Error(
-        "Tu cuenta requiere cambiar la contraseña temporal. Pide al administrador completarla desde la consola de Cognito.",
-      );
-    }
-    throw new Error(`Autenticación incompleta (challenge: ${result.ChallengeName ?? "desconocido"}).`);
+function sessionFromTokens(tokens: TokenResponse, previous?: AuthSession): AuthSession {
+  if (!tokens.id_token || !tokens.access_token) {
+    throw new Error("Cognito no devolvió los tokens esperados.");
   }
   return {
-    idToken: auth.IdToken,
-    accessToken: auth.AccessToken,
-    // El flujo de refresh no devuelve refresh token: se conserva el previo.
-    refreshToken: auth.RefreshToken ?? previous?.refreshToken ?? "",
-    expiresAt: Date.now() + auth.ExpiresIn * 1000,
-    email,
+    idToken: tokens.id_token,
+    accessToken: tokens.access_token,
+    // El grant de refresh no devuelve refresh token: se conserva el previo.
+    refreshToken: tokens.refresh_token ?? previous?.refreshToken ?? "",
+    expiresAt: Date.now() + (tokens.expires_in ?? 3600) * 1000,
   };
 }
+
+// ── Sesión ────────────────────────────────────────────────────────────────────
 
 function saveSession(session: AuthSession): void {
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
@@ -117,37 +184,27 @@ export function getSession(): AuthSession | null {
   }
 }
 
+/** Cierra la sesión local y en el Hosted UI (requiere logout URL registrada). */
 export function signOut(): void {
   sessionStorage.removeItem(STORAGE_KEY);
-}
-
-/** Inicia sesión con email y contraseña (flujo USER_PASSWORD_AUTH). */
-export async function signIn(email: string, password: string): Promise<AuthSession> {
-  const { clientId } = cognitoConfig();
-  const result = await cognitoCall("InitiateAuth", {
-    AuthFlow: "USER_PASSWORD_AUTH",
-    ClientId: clientId,
-    AuthParameters: { USERNAME: email, PASSWORD: password },
-  });
-  const session = sessionFromResult(result, email);
-  saveSession(session);
-  return session;
+  if (!cognitoEnabled()) return;
+  const { domain, clientId } = cognitoConfig();
+  const params = new URLSearchParams({ client_id: clientId, logout_uri: redirectUri() });
+  window.location.assign(`${domain}/logout?${params.toString()}`);
 }
 
 async function refreshSession(session: AuthSession): Promise<AuthSession | null> {
   if (!session.refreshToken) return null;
-  const { clientId } = cognitoConfig();
   try {
-    const result = await cognitoCall("InitiateAuth", {
-      AuthFlow: "REFRESH_TOKEN_AUTH",
-      ClientId: clientId,
-      AuthParameters: { REFRESH_TOKEN: session.refreshToken },
+    const tokens = await tokenRequest({
+      grant_type: "refresh_token",
+      refresh_token: session.refreshToken,
     });
-    const refreshed = sessionFromResult(result, session.email, session);
+    const refreshed = sessionFromTokens(tokens, session);
     saveSession(refreshed);
     return refreshed;
   } catch {
-    signOut();
+    sessionStorage.removeItem(STORAGE_KEY);
     return null;
   }
 }
