@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   LayoutDashboard, Building2, PlusSquare, Settings,
-  LogOut, ChevronRight, Bell, Search, User, Menu, X
+  LogOut, ChevronRight, Search, Menu
 } from "lucide-react";
 import { DashboardOverview } from "./DashboardOverview";
 import { ListingsTable } from "./ListingsTable";
@@ -171,16 +171,6 @@ export function DashboardShell({ onLogout }: DashboardShellProps) {
                 placeholder="Buscar propiedades..."
                 className="text-xs w-36 focus:outline-none text-[#1F2937] placeholder-[#9CA3AF] bg-transparent"
               />
-            </div>
-
-            {/* Notifications */}
-            <div className="relative">
-              <button className="text-[#6B7280] hover:text-[#0B1F3A] transition-colors">
-                <Bell size={16} />
-              </button>
-              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#C9A84C] text-[#0B1F3A] text-[8px] font-bold flex items-center justify-center rounded-full">
-                4
-              </span>
             </div>
 
             {/* Avatar */}
