@@ -28,13 +28,20 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
     { n: profile.stats.satisfied, label: t('login.stats.satisfaction') },
   ].filter(({ n }) => n);
 
-  // Único método de acceso: OIDC con el Hosted UI de Cognito. Sin variables
-  // configuradas (desarrollo local) el botón entra directo al panel.
+  // Único método de acceso: OIDC con el Hosted UI de Cognito. El acceso
+  // directo sin credenciales SOLO existe en `pnpm dev`; un build de
+  // producción sin Cognito configurado no permite entrar.
+  const localBypass = !cognitoEnabled() && import.meta.env.DEV;
+
   const handleSignIn = () => {
     setError("");
-    setLoading(true);
 
     if (!cognitoEnabled()) {
+      if (!localBypass) {
+        setError("La autenticación no está configurada (VITE_COGNITO_DOMAIN / VITE_COGNITO_CLIENT_ID).");
+        return;
+      }
+      setLoading(true);
       setTimeout(() => {
         setLoading(false);
         onLogin();
@@ -42,6 +49,7 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
       return;
     }
 
+    setLoading(true);
     void signInRedirect().catch((err: Error) => {
       setError(err.message || "No se pudo iniciar el proceso de autenticación.");
       setLoading(false);
@@ -150,7 +158,9 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
         <p className="mt-3 text-[#6B7280] text-xs text-center">
           {cognitoEnabled()
             ? "Serás redirigido al inicio de sesión seguro de AWS Cognito."
-            : "Modo local: acceso directo sin credenciales (Cognito no configurado)."}
+            : localBypass
+              ? "Modo desarrollo: acceso directo sin credenciales (Cognito no configurado)."
+              : "Autenticación no configurada: contacta al administrador."}
         </p>
 
         <p className="mt-8 text-[#6B7280] text-xs text-center">

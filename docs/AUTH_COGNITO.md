@@ -20,7 +20,8 @@ embebido y los botones de login social fueron eliminados (2026-07-09).
 | App client (con secret) | ✅ `41nl041ggahj0of3qsh6l0kkne` |
 | Dominio del Hosted UI | ⬜ Crear y ponerlo en `VITE_COGNITO_DOMAIN` |
 | Callback/logout URLs en el app client | ⬜ Registrar (ver abajo) |
-| JWT authorizer en API Gateway | ⬜ Pendiente |
+| **Guard JWT en el backend Go** (rutas de mutación) | ✅ `internal/auth` valida firma RS256/JWKS, exp, issuer y audiencia |
+| JWT authorizer en API Gateway | ⬜ Pendiente (defensa adicional; el guard del backend ya protege) |
 
 ## URLs a registrar en Cognito (App client → Hosted UI)
 
@@ -50,8 +51,19 @@ Hosted UI, `App.tsx` detecta `?code=...`, intercambia tokens y entra al panel.
   valida el claim `aud`, que en el ID token es el client id.
 - **`sessionStorage`**: la sesión sobrevive recargas, no persiste al cerrar
   el navegador (menor exposición ante XSS).
-- **Fallback local**: sin `VITE_COGNITO_DOMAIN`/`VITE_COGNITO_CLIENT_ID`, el
-  botón de acceso entra directo al panel (desarrollo sin AWS).
+- **Fallback local SOLO en desarrollo**: sin `VITE_COGNITO_DOMAIN`/
+  `VITE_COGNITO_CLIENT_ID`, el acceso directo funciona únicamente en
+  `pnpm dev` (`import.meta.env.DEV`); un build de producción sin Cognito
+  muestra "autenticación no configurada" y no permite entrar.
+- **Protección real en el servidor**: el gate del front es solo UX. El
+  backend Go (`internal/auth/verifier.go`) valida el JWT en TODA mutación
+  (`POST/PUT/DELETE` de `/listings`, `/users`, `/uploads`): firma RS256
+  contra el JWKS del pool, expiración, issuer y audiencia (ID o access
+  token). Se activa con `COGNITO_ISSUER` + `COGNITO_AUDIENCE` en el backend
+  y responde `401 UNAUTHORIZED` sin token válido. Los claims validados se
+  inyectan al request con la misma forma que el authorizer del Gateway, así
+  el `owner_id` de las subidas sale del claim `sub` (ya no hace falta
+  `ALLOW_UNAUTHENTICATED_UPLOADS`). Las lecturas GET siguen públicas.
 
 ## Variables de entorno (front)
 
@@ -65,6 +77,17 @@ VITE_COGNITO_CLIENT_SECRET=<secret del app client>
 Nota: `VITE_COGNITO_REGION` y `VITE_COGNITO_USER_POOL_ID` ya no las usa el
 front. El User Pool ID sí define el **issuer** del JWT authorizer:
 `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_jyq6Yp72h`.
+
+## Variables de entorno (backend Go / Lambda)
+
+```bash
+COGNITO_ISSUER=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_jyq6Yp72h
+COGNITO_AUDIENCE=41nl041ggahj0of3qsh6l0kkne
+ALLOW_UNAUTHENTICATED_UPLOADS=false   # ya no es necesario con el guard activo
+```
+
+El backend NO hace OAuth (no necesita el client secret ni redirect URL):
+solo verifica los tokens que emite Cognito.
 
 ## Pasos pendientes en AWS (en orden)
 
