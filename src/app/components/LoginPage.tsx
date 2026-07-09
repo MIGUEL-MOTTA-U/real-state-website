@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Eye, EyeOff, ArrowLeft, Lock, Mail, Chrome } from "lucide-react";
 import { useAgentProfile } from "../hooks/useAgentProfile";
 import { useListings } from "../hooks/useListings";
+import { cognitoEnabled, signIn } from "../services/auth";
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -38,10 +39,20 @@ export function LoginPage({ onLogin, onBack }: LoginPageProps) {
     }
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      onLogin();
-    }, 1200);
+
+    if (!cognitoEnabled()) {
+      // Sin User Pool configurado (desarrollo local): login simulado.
+      setTimeout(() => {
+        setLoading(false);
+        onLogin();
+      }, 1200);
+      return;
+    }
+
+    void signIn(email, password)
+      .then(() => onLogin())
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
   };
 
   return (

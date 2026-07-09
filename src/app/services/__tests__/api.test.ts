@@ -116,7 +116,9 @@ describe("uploadsApi", () => {
     const [url, init] = spy.mock.calls[0];
     expect(url).toBe("http://localhost:8080/uploads");
     expect(init.method).toBe("POST");
-    expect(init.headers).toBeUndefined();
+    // El boundary del multipart lo fija el navegador: no debe haber
+    // Content-Type manual en la petición.
+    expect((init.headers ?? {})["Content-Type"]).toBeUndefined();
     expect(init.body).toBeInstanceOf(FormData);
     const form = init.body as FormData;
     expect(form.get("entity_type")).toBe("listing_photo");

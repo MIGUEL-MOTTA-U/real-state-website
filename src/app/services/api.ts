@@ -1,6 +1,7 @@
 // Cliente HTTP tipado hacia el backend rs-lambda-go (API Gateway HTTP API).
-// Punto único de integración: cuando la Etapa 2 (Cognito) esté activa, el
-// token Bearer se adjuntará aquí.
+// Punto único de integración: con Cognito configurado (Etapa 2), cada
+// petición adjunta el ID token como Bearer para el JWT authorizer.
+import { getIdToken } from "./auth";
 import type { ApiAsset, ApiErrorBody, ApiListing, ApiUser } from "./types";
 
 const DEFAULT_LOCAL_API = "http://localhost:8080";
@@ -36,9 +37,18 @@ function timeoutSignal(ms: number): AbortSignal | undefined {
 }
 
 async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+  // Con sesión de Cognito activa el token viaja en todas las peticiones;
+  // sin Cognito configurado getIdToken() devuelve null y no agrega nada.
+  const token = await getIdToken();
+  const headers: HeadersInit = {
+    ...init?.headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
   const response = await fetch(`${apiBaseUrl()}${path}`, {
     signal: timeoutSignal(timeoutMs),
     ...init,
+    headers,
   });
 
   if (!response.ok) {

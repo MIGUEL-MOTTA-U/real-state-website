@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { PublicSite } from "./components/PublicSite";
+import { cognitoEnabled, getSession, signOut } from "./services/auth";
 
 // El sitio público es la primera pantalla: el panel y el login se cargan en
 // chunks aparte solo cuando se necesitan (mejor primera carga en redes lentas).
@@ -23,7 +24,15 @@ function ViewLoader() {
 }
 
 export default function App() {
-  const [view, setView] = useState<AppView>("public");
+  // Con una sesión de Cognito vigente la recarga vuelve directo al panel.
+  const [view, setView] = useState<AppView>(() =>
+    cognitoEnabled() && getSession() ? "dashboard" : "public",
+  );
+
+  const handleLogout = () => {
+    signOut();
+    setView("public");
+  };
 
   return (
     <div className="size-full">
@@ -40,7 +49,7 @@ export default function App() {
       )}
       {view === "dashboard" && (
         <Suspense fallback={<ViewLoader />}>
-          <DashboardShell onLogout={() => setView("public")} />
+          <DashboardShell onLogout={handleLogout} />
         </Suspense>
       )}
     </div>
