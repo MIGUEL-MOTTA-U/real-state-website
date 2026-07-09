@@ -878,7 +878,7 @@ export function ListingFormView({ listing, onBack, onSaved }: ListingFormViewPro
             <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
               {assets.map((asset, i) => (
                 <div key={asset.id} className="relative group">
-                  <img src={asset.url} alt={`Foto ${i + 1}`} className="w-full aspect-[4/3] object-cover" />
+                  <img src={asset.url} alt={`Foto ${i + 1}`} loading="lazy" decoding="async" className="w-full aspect-[4/3] object-cover" />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                     <button
                       onClick={() => void handleDeleteAsset(asset)}

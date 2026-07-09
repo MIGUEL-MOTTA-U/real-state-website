@@ -18,7 +18,15 @@ interface AgentAvatarProps {
  */
 export function AgentAvatar({ src, name, className = "", textClass = "text-sm" }: AgentAvatarProps) {
   if (src) {
-    return <img src={src} alt={name || "Agente"} className={`object-cover ${className}`} />;
+    return (
+      <img
+        src={src}
+        alt={name || "Agente"}
+        loading="lazy"
+        decoding="async"
+        className={`object-cover ${className}`}
+      />
+    );
   }
   const initials = initialsOf(name);
   return (

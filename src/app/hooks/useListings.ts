@@ -9,6 +9,19 @@ interface UseListingsResult {
   refresh: () => Promise<void>;
 }
 
+// Varios componentes montan este hook a la vez (shell, resumen, tabla):
+// la petición en vuelo se comparte para no repetir el mismo GET /listings.
+let inflight: Promise<ApiListing[]> | null = null;
+
+function loadListings(): Promise<ApiListing[]> {
+  if (!inflight) {
+    inflight = listingsApi.list().finally(() => {
+      inflight = null;
+    });
+  }
+  return inflight;
+}
+
 /** Carga la lista de inmuebles del backend con estados de carga y error. */
 export function useListings(): UseListingsResult {
   const [listings, setListings] = useState<ApiListing[]>([]);
@@ -19,7 +32,7 @@ export function useListings(): UseListingsResult {
     setLoading(true);
     setError(null);
     try {
-      const data = await listingsApi.list();
+      const data = await loadListings();
       setListings(data ?? []);
     } catch (err) {
       setError(

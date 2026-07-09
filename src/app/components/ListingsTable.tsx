@@ -293,7 +293,7 @@ export function ListingsTable({ onNewListing, onEditListing }: ListingsTableProp
                   </button>
                 </td>
                 <td className="px-4 py-3">
-                  <img src={l.img} alt={l.title} className="w-14 h-10 object-cover" />
+                  <img src={l.img} alt={l.title} loading="lazy" decoding="async" className="w-14 h-10 object-cover" />
                 </td>
                 <td className="px-4 py-3 text-[#6B7280] text-xs font-mono truncate max-w-[110px]" title={l.id}>{l.id}</td>
                 <td className="px-4 py-3">

@@ -286,9 +286,12 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
           muted
           loop
           playsInline
+          preload={profile.heroVideoUrl ? "auto" : "none"}
           poster={heroPoster}
         >
-          <source src="" type="video/mp4" />
+          {/* Sin video configurado no se emite <source src=""> (algunos
+              navegadores lo intentan descargar y reportan error). */}
+          {profile.heroVideoUrl && <source src={profile.heroVideoUrl} type="video/mp4" />}
         </video>
 
         <div
@@ -390,6 +393,8 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
               <img
                 src={profile.avatarUrl}
                 alt={`${agentName}, Agente ${agentOffice}`}
+                loading="lazy"
+                decoding="async"
                 className="relative w-full object-cover"
                 style={{ aspectRatio: "3/4" }}
               />
@@ -507,6 +512,8 @@ export function PublicSite({ onNavigateToDashboard }: PublicSiteProps) {
                   <img
                     src={p.img}
                     alt={p.title}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute top-3 left-3 flex gap-1.5">

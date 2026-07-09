@@ -23,8 +23,23 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}${path}`, init);
+/** Timeout por defecto; las subidas de archivos usan uno más holgado. */
+const REQUEST_TIMEOUT_MS = 30_000;
+const UPLOAD_TIMEOUT_MS = 120_000;
+
+function timeoutSignal(ms: number): AbortSignal | undefined {
+  // Evita spinners infinitos en redes colgadas; en navegadores sin
+  // AbortSignal.timeout simplemente no se aplica timeout.
+  return typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
+    ? AbortSignal.timeout(ms)
+    : undefined;
+}
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    signal: timeoutSignal(timeoutMs),
+    ...init,
+  });
 
   if (!response.ok) {
     let body: ApiErrorBody | null = null;
@@ -94,7 +109,7 @@ export const uploadsApi = {
     for (const file of files) {
       form.append("files", file, file.name);
     }
-    return request<ApiAsset[]>("/uploads", { method: "POST", body: form });
+    return request<ApiAsset[]>("/uploads", { method: "POST", body: form }, UPLOAD_TIMEOUT_MS);
   },
   getUrl: (id: string) => request<ApiAsset>(`/uploads/${encodeURIComponent(id)}/url`),
   remove: (id: string) =>

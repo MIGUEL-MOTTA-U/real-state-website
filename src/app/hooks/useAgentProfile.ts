@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchProfileUser, toAgentProfile, type AgentProfile } from "../services/profile";
+import { fetchProfileUserShared, toAgentProfile, type AgentProfile } from "../services/profile";
 
 /**
  * Carga el perfil del agente (VITE_PROFILE_USER_ID con fallback al primer
@@ -11,7 +11,7 @@ export function useAgentProfile(): AgentProfile {
 
   useEffect(() => {
     let cancelled = false;
-    fetchProfileUser()
+    fetchProfileUserShared()
       .then((user) => {
         if (!cancelled && user) setProfile(toAgentProfile(user));
       })

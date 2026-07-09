@@ -30,7 +30,7 @@ describe("listingsApi", () => {
 
     const result = await listingsApi.list();
 
-    expect(spy).toHaveBeenCalledWith("http://localhost:8080/listings", undefined);
+    expect(spy.mock.calls[0][0]).toBe("http://localhost:8080/listings");
     expect(result).toHaveLength(1);
     expect(result[0].listing_id).toBe("abc");
   });
@@ -82,7 +82,8 @@ describe("listingsApi", () => {
     vi.stubGlobal("fetch", spy);
 
     await expect(listingsApi.remove("abc")).resolves.toBeUndefined();
-    expect(spy).toHaveBeenCalledWith("http://localhost:8080/listings/abc", { method: "DELETE" });
+    expect(spy.mock.calls[0][0]).toBe("http://localhost:8080/listings/abc");
+    expect(spy.mock.calls[0][1]).toMatchObject({ method: "DELETE" });
   });
 
   it("codifica IDs con caracteres especiales en la URL", async () => {

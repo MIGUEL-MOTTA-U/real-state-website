@@ -27,6 +27,19 @@ export async function fetchProfileUser(): Promise<ApiUser | null> {
   return users?.[0] ?? null;
 }
 
+// Varias vistas cargan el perfil al montarse a la vez: la petición en vuelo
+// se comparte para no repetir el mismo GET.
+let inflightProfile: Promise<ApiUser | null> | null = null;
+
+export function fetchProfileUserShared(): Promise<ApiUser | null> {
+  if (!inflightProfile) {
+    inflightProfile = fetchProfileUser().finally(() => {
+      inflightProfile = null;
+    });
+  }
+  return inflightProfile;
+}
+
 /** Datos ya resueltos que consumen las vistas públicas. */
 export interface AgentProfile {
   id: string;
@@ -38,6 +51,7 @@ export interface AgentProfile {
   awardText: string;
   avatarUrl: string;
   heroImageUrl: string;
+  heroVideoUrl: string;
   phone: string;
   email: string;
   whatsappLink: string;
@@ -66,6 +80,7 @@ export function toAgentProfile(user: ApiUser | null): AgentProfile {
     awardText: m?.award_text ?? "",
     avatarUrl: user?.avatar_url ?? "",
     heroImageUrl: m?.hero_image_url ?? "",
+    heroVideoUrl: m?.hero_video_url ?? "",
     phone: user?.phone ?? "",
     email: user?.email ?? "",
     whatsappLink: user?.whatsapp_link ?? "",

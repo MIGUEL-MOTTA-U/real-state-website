@@ -180,6 +180,8 @@ export function DashboardOverview() {
                 <img
                   src={l.img}
                   alt={l.title}
+                  loading="lazy"
+                  decoding="async"
                   className="w-14 h-10 object-cover shrink-0"
                 />
                 <div className="flex-1 min-w-0">
